@@ -35,6 +35,10 @@ const SEMESTERS = [
     "指定なし", "前期", "通年", "後期"
 ];
 
+const GRADE = [
+    "1年","2年","3年","4年"
+];
+
 export const CalendarCreate = () => {
     const navigate = useNavigate();
     const location = useLocation(); // 編集用のデータを受け取る
@@ -131,7 +135,24 @@ export const CalendarCreate = () => {
                                     variant="outlined"
                                 />
                             </Grid>
-                            <Grid item xs={12} sm={6}>
+                            <Grid item xs={12} sm={4}>
+                                <FormControl fullWidth variant="outlined">
+                                    <InputLabel>学年</InputLabel>
+                                    <Select
+                                        name="grade"
+                                        value={formData.grade}
+                                        onChange={handleChange}
+                                        label="学年"
+                                    >
+                                        {GRADE.map((grade) => (
+                                            <MenuItem key={grade} value={grade}>
+                                                {grade}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} sm={4}>
                                 <FormControl fullWidth variant="outlined">
                                     <InputLabel>キャンパス</InputLabel>
                                     <Select
@@ -148,7 +169,7 @@ export const CalendarCreate = () => {
                                     </Select>
                                 </FormControl>
                             </Grid>
-                            <Grid item xs={12} sm={6}>
+                            <Grid item xs={12} sm={4}>
                                 <FormControl fullWidth variant="outlined">
                                     <InputLabel>学期</InputLabel>
                                     <Select
