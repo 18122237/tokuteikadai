@@ -228,6 +228,31 @@ export const Home = () => {
                         未設定
                     </Typography>
                 )}
+                <Box
+                sx={{
+                    margin: 3,
+                    display: 'flex', // 横並びにする
+                    flexWrap: 'nowrap', // 折り返しを防止
+                    justifyContent: 'center', // 水平方向中央寄せ
+                    alignItems: 'center', // 垂直方向中央寄せ
+                    gap: 2, // ボタン間のスペース
+                }}
+            >
+                <div
+                    variant="contained"
+                    color="primary"
+                    
+                    sx={{
+                        flex: '1 0 auto', // サイズを調整
+                        minWidth: '150px', // ボタンの最低幅
+                        maxWidth: '200px',
+                    }}
+                >
+                    <label>習得単位</label>   
+                    <input type='text' />
+
+                </div>
+            </Box>
 
                 <Box
                 sx={{
