@@ -9,19 +9,22 @@ export const RegisterLecture = () => {
   const navigate = useNavigate();
   const { defCalendarInfo } = useSetup();
   const { registerLecture, unregisterLecture, isLectureRegistered } =
-    useRegisterLecture(defCalendarInfo);
+    useRegisterLecture(defCalendarInfo); // Pass defCalendarInfo here if needed by the hook
 
   const lecture = location.state?.lecture;
-  const registered = isLectureRegistered(lecture?.id);
+
+  // Added check for lecture existence before calling the hook
+  const registered = lecture ? isLectureRegistered(lecture.id) : false;
 
   const handleRegister = async () => {
+    if (!lecture) return; // Add check if lecture is undefined
     try {
       const isFailure = await registerLecture(lecture.id);
       if (isFailure) {
         alert("この時限は他の講義が登録されています。");
       } else {
         alert(`「${lecture.科目}」を登録しました。`);
-        navigate(-1); // 戻る
+        navigate('/'); // 🟢 Navigate to Home screen
       }
     } catch (error) {
       console.error('登録失敗:', error);
@@ -30,10 +33,11 @@ export const RegisterLecture = () => {
   };
 
   const handleUnregister = async () => {
+    if (!lecture) return; // Add check if lecture is undefined
     try {
       await unregisterLecture(lecture.id);
       alert(`「${lecture.科目}」を解除しました。`);
-      navigate(-1);
+      navigate('/'); // 🟢 Navigate to Home screen
     } catch (error) {
       console.error('解除失敗:', error);
       alert('解除に失敗しました。');
@@ -41,7 +45,14 @@ export const RegisterLecture = () => {
   };
 
   if (!lecture) {
-    return <Typography>講義情報が見つかりません。</Typography>;
+    return (
+      <Box sx={{ padding: 3 }}>
+        <Typography>講義情報が見つかりません。</Typography>
+        <Button variant="text" onClick={() => navigate('/')} sx={{ mt: 2 }}>
+            ホームに戻る
+        </Button>
+      </Box>
+    );
   }
 
   return (
@@ -64,7 +75,8 @@ export const RegisterLecture = () => {
           <strong>単位:</strong> {lecture.単位}
         </Typography>
         <Typography variant="body1">
-          <a href={lecture.url} target="_blank" rel="noopener noreferrer" >
+          <a
+            href={lecture.url} target="_blank" rel="noopener noreferrer" >
             詳細を見る
           </a>
         </Typography>
@@ -78,8 +90,9 @@ export const RegisterLecture = () => {
           登録
         </Button>
       )}
-      <Button variant="text" onClick={() => navigate(-1)} sx={{ marginLeft: 2 }}>
-        キャンセル
+      {/* 🟢 Changed Cancel button to also go Home */}
+      <Button variant="text" onClick={() => navigate('/')} sx={{ marginLeft: 2 }}>
+        キャンセルしてホームへ
       </Button>
     </Box>
   );
