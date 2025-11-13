@@ -63,6 +63,26 @@ export const Home = () => {
   const { defCalendarInfo, lectureInfo } = useSetup();
   const navigate = useNavigate();
 
+  const handleInitRequiredCourses = async () => {
+  const confirmed = window.confirm("必修科目データを登録しますか？");
+  if (!confirmed) return;
+
+  try {
+    const response = await fetch("http://localhost:8000/required_courses/init", {
+      method: "POST",
+    });
+
+    const data = await response.json();
+    console.log("📦 API Response:", data);
+    alert(data.message || data.error || "不明なレスポンスです");
+
+  } catch (error) {
+    console.error("❌ Fetch Error:", error);
+    alert("通信エラーが発生しました: " + error);
+  }
+};
+
+
   // 🟢 HOOKS: 常にトップレベルで呼び出す
   const [graduationUnits, setGraduationUnits] = useState(0);
   const [inputUnits, setInputUnits] = useState('');
@@ -508,6 +528,15 @@ export const Home = () => {
             未設定
           </Typography>
         )}
+        <Button
+           variant="contained"
+           color="primary"
+            sx={{ mt: 2 }}
+            onClick={handleInitRequiredCourses}
+      >
+            必修科目を登録する
+        </Button>
+
 
         <Box
           sx={{
@@ -606,7 +635,7 @@ export const Home = () => {
         </Typography>
         <MemoCard lectureId="personal_note" lectureName="個人メモ" />
       </Box>
-
+      
       <Footer />
     </Box>
   );
