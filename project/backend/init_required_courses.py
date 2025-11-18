@@ -4,7 +4,12 @@ from db_config import create_db_connection
 connection = create_db_connection()
 cursor = connection.cursor()
 
-with open("required_courses.csv", "r", encoding="utf-8") as f:
+import os
+
+CSV_PATH = os.path.join(os.path.dirname(__file__), "required_courses.csv")
+
+with open(CSV_PATH, "r", encoding="utf-8") as f:
+
     reader = csv.DictReader(f)
     for row in reader:
         cursor.execute("""

@@ -66,3 +66,12 @@ class user_kougi(Base):
     __table_args__ = (
         PrimaryKeyConstraint('calendar_id','kougi_id','period'),      
     )
+
+class RequiredCourse(Base):
+    __tablename__ = "required_courses"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    department = Column(String(255), nullable=False)
+    grade = Column(Integer, nullable=False)
+    kougi_id = Column(Integer, nullable=False)
+    campus = Column(String(255), nullable=True)
