@@ -63,6 +63,7 @@ export const Home = () => {
   const { defCalendarInfo, lectureInfo } = useSetup();
   const navigate = useNavigate();
 
+<<<<<<< HEAD
   const handleInitRequiredCourses = async () => {
   const confirmed = window.confirm("必修科目データを登録しますか？");
   if (!confirmed) return;
@@ -89,6 +90,14 @@ export const Home = () => {
   const [accumulatedUnits, setAccumulatedUnits] = useState(0);
   const [inputAccumulatedUnits, setInputAccumulatedUnits] = useState('');
 
+=======
+  // 🟢 HOOKS: 常にトップレベルで呼び出す
+  const [graduationUnits, setGraduationUnits] = useState(0);
+  const [inputUnits, setInputUnits] = useState('');
+  const [accumulatedUnits, setAccumulatedUnits] = useState(0);
+  const [inputAccumulatedUnits, setInputAccumulatedUnits] = useState('');
+
+>>>>>>> e5b316922d68ef20e0ad0a1eeca11a1fa5fabc06
   // 🟢 現在のカレンダーの単位数合計の計算
   const currentCalendarUnits = useMemo(() => {
     if (!lectureInfo?.results) return 0;
