@@ -48,6 +48,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi import APIRouter
+import csv
+import os
+from db_config import create_db_connection
+
+@app.post("/required_courses/init")
+def init_required_courses():
+    try:
+        # CSV の絶対パス
+        CSV_PATH = os.path.join(os.path.dirname(__file__), "required_courses.csv")
+
+        # DB 接続
+        connection = create_db_connection()
+        cursor = connection.cursor()
+
+        with open(CSV_PATH, "r", encoding="utf-8-sig") as f:
+
+            reader = csv.DictReader(f)
+            for row in reader:
+                cursor.execute("""
+                    INSERT INTO required_courses (department, grade, kougi_id, campus)
+                    VALUES (%s, %s, %s, %s)
+                """, (row["department"], row["grade"], row["kougi_id"], row.get("campus", None)))
+
+        connection.commit()
+        connection.close()
+
+        return {"message": "✅ 必修科目データを登録しました。"}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(IntegrityError, integrity_error_handler)
 app.add_exception_handler(OperationalError, operational_error_handler)

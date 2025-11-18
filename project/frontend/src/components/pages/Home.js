@@ -1,10 +1,10 @@
-import React, { useContext, useMemo } from 'react'; // useMemo を追加
+import React, { useContext, useMemo, useState, useEffect } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { UserContext } from '../providers/UserProvider';
 import { Header } from '../templates/Header';
 import { Footer } from '../templates/Footer';
 import { useSetup } from '../hooks/useSetup';
-import { MemoCard } from '../elements/MemoCard'; // MemoCard をインポート
+import { MemoCard } from '../elements/MemoCard';
 import {
   Box,
   Button,
@@ -15,40 +15,125 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper
+  Paper,
+  TextField,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'; 
 
-// 🟢 各講義のメモのタイトルを取得するヘルパー関数
+// ==========================================================
+// 定数とヘルパー関数
+// ==========================================================
+const GRADUATION_KEY = 'graduation_required_units';
+const ACQUIRED_KEY = 'accumulated_acquired_units'; 
+
+const DEPARTMENT_COLORS = {
+  '経済学部': '#2196f3',
+  '法学部': '#ff9800',
+  '経営学部': '#4caf50',
+  '青山スタンダード科目': '#9c27b0',
+  '文学部共通': '#f44336',
+  '国際政治経済学部': '#00bcd4',
+  '社会情報学部': '#8bc34a',
+  '理工学部共通': '#ffeb3b',
+};
+
+const CAMPUS_HIGHLIGHTS = {
+  '青山': 'rgba(255, 255, 255, 0.9)',
+  '相模原': '#e0f7fa',
+};
+
+const NO_LECTURE_COLOR = '#bdbdbd';
+const PRIMARY_LECTURE_COLOR = '#1976d2';
+
 const getLectureMemoTitle = (lectureId) => {
   const storageKey = `memo_${lectureId}`;
   const savedData = JSON.parse(localStorage.getItem(storageKey));
   return savedData?.title;
 };
 
+// ==========================================================
+// Home コンポーネント開始
+// ==========================================================
+
 export const Home = () => {
   const { isLogined } = useContext(UserContext);
   const { defCalendarInfo, lectureInfo } = useSetup();
   const navigate = useNavigate();
 
-  if (!isLogined) {
-    return <Navigate to="/login" />;
-  }
+  const handleInitRequiredCourses = async () => {
+  const confirmed = window.confirm("必修科目データを登録しますか？");
+  if (!confirmed) return;
 
-  // 🟢 単位数の合計を計算する useMemo
-  const totalUnits = useMemo(() => {
+  try {
+    const response = await fetch("http://localhost:8000/required_courses/init", {
+      method: "POST",
+    });
+
+    const data = await response.json();
+    console.log("📦 API Response:", data);
+    alert(data.message || data.error || "不明なレスポンスです");
+
+  } catch (error) {
+    console.error("❌ Fetch Error:", error);
+    alert("通信エラーが発生しました: " + error);
+  }
+};
+
+
+  // 🟢 HOOKS: 常にトップレベルで呼び出す
+  const [graduationUnits, setGraduationUnits] = useState(0);
+  const [inputUnits, setInputUnits] = useState('');
+  const [accumulatedUnits, setAccumulatedUnits] = useState(0);
+  const [inputAccumulatedUnits, setInputAccumulatedUnits] = useState('');
+
+  // 🟢 現在のカレンダーの単位数合計の計算
+  const currentCalendarUnits = useMemo(() => {
     if (!lectureInfo?.results) return 0;
 
     return lectureInfo.results.reduce((total, lecture) => {
-      // 講義の「単位」は文字列なので、parseFloatで数値に変換して合計
       const unit = parseFloat(lecture.単位) || 0;
       return total + unit;
     }, 0);
   }, [lectureInfo]);
+  
+  // 🟢 既取得単位数と現在のカレンダーの単位数を合わせた合計単位数
+  const totalPlannedUnits = useMemo(() => {
+      return currentCalendarUnits + accumulatedUnits;
+  }, [currentCalendarUnits, accumulatedUnits]);
 
-  // 🟢 useMemo を使用して、時間割のレンダリング結果をメモ化
+  // 🟢 残り必要単位数の計算
+  const remainingUnits = useMemo(() => {
+    const remaining = graduationUnits > totalPlannedUnits ? graduationUnits - totalPlannedUnits : 0;
+    return remaining;
+  }, [graduationUnits, totalPlannedUnits]);
+
+  // 🟢 初期読み込み（ローカルストレージから要件と既取得単位を取得）
+  useEffect(() => {
+    const savedGradUnits = localStorage.getItem(GRADUATION_KEY);
+    if (savedGradUnits) {
+      const parsedUnits = parseFloat(savedGradUnits);
+      setGraduationUnits(parsedUnits);
+      setInputUnits(savedGradUnits);
+    }
+    
+    const savedAcquiredUnits = localStorage.getItem(ACQUIRED_KEY);
+    if (savedAcquiredUnits) {
+      const parsedAcquiredUnits = parseFloat(savedAcquiredUnits);
+      setAccumulatedUnits(parsedAcquiredUnits);
+      setInputAccumulatedUnits(savedAcquiredUnits);
+    }
+  }, []);
+
+  // ------------------------------------------------------------------
+
+  // useMemo を使用して、時間割のレンダリング結果をメモ化
   const calendarRows = useMemo(() => {
-    if (!defCalendarInfo) return [];
-
+    // 🟢 条件チェックをロジックの最上部に移動 (Hooksの外)
+    if (!defCalendarInfo) return []; 
+    
     const days = ['月', '火', '水', '木', '金'];
     if (defCalendarInfo?.sat_flag) days.push('土');
     const maxPeriods = defCalendarInfo?.sixth_period_flag ? 6 : 5;
@@ -71,6 +156,7 @@ export const Home = () => {
         let content = '';
         let lecture = null;
         let memoTitle = null; 
+        let backgroundColor = NO_LECTURE_COLOR;
 
         if (j === 0) {
           // 時限列
@@ -102,9 +188,26 @@ export const Home = () => {
           lecture = lectureDetails?.[lectureId];
           content = lecture?.科目 || '－';
 
-          // 🟢 講義が登録されていればメモタイトルを取得
           if (lecture) {
             memoTitle = getLectureMemoTitle(lecture.id);
+
+            // 🟢 ハイライトカラー決定ロジック
+            const department = lecture.開講;
+            const timeSlot = lecture.時限;
+
+            // 優先度1: 学部別カラーをデフォルトとする
+            backgroundColor = DEPARTMENT_COLORS[department] || PRIMARY_LECTURE_COLOR;
+            
+            // 優先度2: キャンパス別ハイライト (背景色を調整)
+            let campusHighlight = null;
+            if (timeSlot.includes('相模原')) {
+                campusHighlight = CAMPUS_HIGHLIGHTS['相模原'];
+            } else if (timeSlot.includes('青山')) {
+                campusHighlight = CAMPUS_HIGHLIGHTS['青山'];
+            }
+            
+            // キャンパスハイライトがあれば適用
+            backgroundColor = campusHighlight || backgroundColor;
           }
 
           cells.push(
@@ -128,9 +231,15 @@ export const Home = () => {
                   maxWidth: '180px',
                   minHeight: '80px',
                   lineHeight: 1.2,
+                  // 🟢 ハイライトカラーを背景色に直接適用
+                  backgroundColor: backgroundColor,
+                  color: lecture ? (['#ffeb3b', '#ffc107', 'rgba(255, 255, 255, 0.9)', '#e0f7fa'].includes(backgroundColor) ? 'black' : 'white') : 'white',
+                  '&:hover': {
+                    backgroundColor: backgroundColor,
+                    opacity: 0.8,
+                  },
                 }}
                 variant="contained"
-                color={lecture ? 'primary' : 'default'}
                 onClick={() =>
                   lecture
                     ? navigate('/register-lecture', { state: { lecture } })
@@ -143,7 +252,7 @@ export const Home = () => {
                   <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '13px' }}>
                     {content}
                   </Typography>
-                  {/* 🟢 メモがある場合に表示 */}
+                  {/* メモがある場合に表示 */}
                   {memoTitle && (
                     <Typography 
                       variant="caption" 
@@ -173,9 +282,12 @@ export const Home = () => {
     return rows;
   }, [defCalendarInfo, lectureInfo, navigate]);
 
-  // 既存のunmatchedLecturesのロジックをuseMemoでラップ
+  // 🟢 useMemo をトップレベルに維持
   const unmatchedLectures = useMemo(() => {
-    return lectureInfo?.registered_user_kougi
+    // 🟢 条件チェックをロジックの最上部に移動 (Hooksの外)
+    if (!lectureInfo?.registered_user_kougi) return [];
+
+    return lectureInfo.registered_user_kougi
       .filter((registered) => {
         const isOtherLecture =
           registered.period.includes('曜') || registered.period.includes('不定');
@@ -190,6 +302,38 @@ export const Home = () => {
       .filter(Boolean);
   }, [lectureInfo]);
 
+  // ------------------------------------------------------------------
+
+  // 卒業要件の保存処理
+  const handleSaveRequirement = () => {
+    const parsedUnits = parseFloat(inputUnits);
+    if (!isNaN(parsedUnits) && parsedUnits >= 0) {
+      localStorage.setItem(GRADUATION_KEY, parsedUnits.toString());
+      setGraduationUnits(parsedUnits);
+      alert(`卒業要件単位数を ${parsedUnits} 単位に設定しました。`);
+    } else {
+      alert('無効な単位数です。数値を入力してください。');
+      setInputUnits(graduationUnits.toString()); 
+    }
+  };
+  
+  // 既取得単位数の保存処理
+  const handleSaveAcquiredUnits = () => {
+    const parsedUnits = parseFloat(inputAccumulatedUnits);
+    if (!isNaN(parsedUnits) && parsedUnits >= 0) {
+      localStorage.setItem(ACQUIRED_KEY, parsedUnits.toString());
+      setAccumulatedUnits(parsedUnits);
+      alert(`既取得単位数を ${parsedUnits} 単位に設定しました。`);
+    } else {
+      alert('無効な単位数です。数値を入力してください。');
+      setInputAccumulatedUnits(accumulatedUnits.toString()); 
+    }
+  };
+
+  // 🟢 ログインチェック（Hooksの後に配置）
+  if (!isLogined) {
+    return <Navigate to="/login" />;
+  }
 
   return (
     <Box>
@@ -213,15 +357,80 @@ export const Home = () => {
           {defCalendarInfo?.calendar_name || 'ホーム画面'}
         </Typography>
 
-        {/* 🟢 単位数の合計表示のJSX */}
-        <Typography
-          variant="h6"
-          align="center"
-          sx={{ color: 'yellow', marginBottom: 3, fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.2)', mx: 3, py: 1, borderRadius: 1 }}
-        >
-          合計取得予定単位数: {totalUnits.toFixed(1)} 単位
-        </Typography>
+        {/* 単位数管理パネル（アコーディオン） */}
+        <Box sx={{ mx: 'auto', maxWidth: '600px', mb: 3 }}>
+          <Accordion 
+            defaultExpanded={remainingUnits > 0} 
+            sx={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', borderRadius: 2 }}
+          >
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              aria-controls="unit-content"
+              id="unit-header"
+              sx={{ borderBottom: '1px solid #ddd' }}
+            >
+              <Box sx={{ flexGrow: 1, textAlign: 'center', py: 0.5 }}>
+                {/* 1. 残り必要単位数の表示（通常時） */}
+                <Typography
+                  variant="h5"
+                  sx={{ 
+                    fontWeight: 'bold',
+                    color: remainingUnits > 0 ? '#d32f2f' : '#388e3c', 
+                  }}
+                >
+                  🎓 残り必要単位数: {remainingUnits.toFixed(1)} 単位
+                </Typography>
+                {/* 2. 合計取得予定単位数と要件のサマリ */}
+                <Typography variant="caption" color="textSecondary">
+                  (予定 {totalPlannedUnits.toFixed(1)} / 要件 {graduationUnits.toFixed(1)} 単位)
+                </Typography>
+              </Box>
+            </AccordionSummary>
+            
+            <AccordionDetails sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 3, backgroundColor: '#f5f5f5' }}>
+                {/* 3. 単位数の内訳 */}
+                <Typography variant="subtitle1" sx={{ textAlign: 'center', fontWeight: 'bold' }}>
+                    単位数内訳: {accumulatedUnits.toFixed(1)} (既取得) + {currentCalendarUnits.toFixed(1)} (カレンダー予定)
+                </Typography>
 
+                {/* 4. 既取得単位数設定 UI */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <TextField
+                        label="既取得単位数 (累計)"
+                        variant="outlined"
+                        size="small"
+                        type="number"
+                        value={inputAccumulatedUnits}
+                        onChange={(e) => setInputAccumulatedUnits(e.target.value)}
+                        sx={{ flexGrow: 1, mr: 1, backgroundColor: 'white' }}
+                        inputProps={{ min: "0", step: "0.5" }} 
+                    />
+                    <Button variant="contained" color="secondary" onClick={handleSaveAcquiredUnits}>
+                        設定
+                    </Button>
+                </Box>
+                
+                {/* 5. 卒業要件設定 UI */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <TextField
+                        label="卒業要件単位数"
+                        variant="outlined"
+                        size="small"
+                        type="number"
+                        value={inputUnits}
+                        onChange={(e) => setInputUnits(e.target.value)}
+                        sx={{ flexGrow: 1, mr: 1, backgroundColor: 'white' }}
+                        inputProps={{ min: "0", step: "0.5" }} 
+                    />
+                    <Button variant="contained" color="primary" onClick={handleSaveRequirement}>
+                        卒業要件設定
+                    </Button>
+                </Box>
+            </AccordionDetails>
+          </Accordion>
+        </Box>
+        {/* 単位数管理パネル終わり */}
+        
         <Box
           sx={{
             margin: 3,
@@ -319,6 +528,15 @@ export const Home = () => {
             未設定
           </Typography>
         )}
+        <Button
+           variant="contained"
+           color="primary"
+            sx={{ mt: 2 }}
+            onClick={handleInitRequiredCourses}
+      >
+            必修科目を登録する
+        </Button>
+
 
         <Box
           sx={{
@@ -401,7 +619,7 @@ export const Home = () => {
         sx={{
           mt: 4,
           mb: 6,
-          maxWidth: '800px',
+          maxWidth: '2000px',
           margin: '0 auto',
           padding: 3,
           backgroundColor: '#f5f5f5',
@@ -417,7 +635,7 @@ export const Home = () => {
         </Typography>
         <MemoCard lectureId="personal_note" lectureName="個人メモ" />
       </Box>
-
+      
       <Footer />
     </Box>
   );
