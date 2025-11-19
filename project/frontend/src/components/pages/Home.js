@@ -49,9 +49,13 @@ const NO_LECTURE_COLOR = '#bdbdbd';
 const PRIMARY_LECTURE_COLOR = '#1976d2';
 
 const getLectureMemoTitle = (lectureId) => {
-  const storageKey = `memo_${lectureId}`;
-  const savedData = JSON.parse(localStorage.getItem(storageKey));
-  return savedData?.title;
+  try {
+    const storageKey = `memo_${lectureId}`;
+    const savedData = JSON.parse(localStorage.getItem(storageKey));
+    return savedData?.title;
+  } catch (e) {
+    return undefined;
+  }
 };
 
 // ==========================================================
@@ -63,26 +67,24 @@ export const Home = () => {
   const { defCalendarInfo, lectureInfo } = useSetup();
   const navigate = useNavigate();
 
-<<<<<<< HEAD
+  // 必修科目を初期登録する API 呼び出し（ボタンハンドラ）
   const handleInitRequiredCourses = async () => {
-  const confirmed = window.confirm("必修科目データを登録しますか？");
-  if (!confirmed) return;
+    const confirmed = window.confirm("必修科目データを登録しますか？");
+    if (!confirmed) return;
 
-  try {
-    const response = await fetch("http://localhost:8000/required_courses/init", {
-      method: "POST",
-    });
+    try {
+      const response = await fetch("http://localhost:8000/required_courses/init", {
+        method: "POST",
+      });
 
-    const data = await response.json();
-    console.log("📦 API Response:", data);
-    alert(data.message || data.error || "不明なレスポンスです");
-
-  } catch (error) {
-    console.error("❌ Fetch Error:", error);
-    alert("通信エラーが発生しました: " + error);
-  }
-};
-
+      const data = await response.json();
+      console.log("📦 API Response:", data);
+      alert(data.message || data.error || "不明なレスポンスです");
+    } catch (error) {
+      console.error("❌ Fetch Error:", error);
+      alert("通信エラーが発生しました: " + error);
+    }
+  };
 
   // 🟢 HOOKS: 常にトップレベルで呼び出す
   const [graduationUnits, setGraduationUnits] = useState(0);
@@ -90,14 +92,6 @@ export const Home = () => {
   const [accumulatedUnits, setAccumulatedUnits] = useState(0);
   const [inputAccumulatedUnits, setInputAccumulatedUnits] = useState('');
 
-=======
-  // 🟢 HOOKS: 常にトップレベルで呼び出す
-  const [graduationUnits, setGraduationUnits] = useState(0);
-  const [inputUnits, setInputUnits] = useState('');
-  const [accumulatedUnits, setAccumulatedUnits] = useState(0);
-  const [inputAccumulatedUnits, setInputAccumulatedUnits] = useState('');
-
->>>>>>> e5b316922d68ef20e0ad0a1eeca11a1fa5fabc06
   // 🟢 現在のカレンダーの単位数合計の計算
   const currentCalendarUnits = useMemo(() => {
     if (!lectureInfo?.results) return 0;
@@ -201,8 +195,8 @@ export const Home = () => {
             memoTitle = getLectureMemoTitle(lecture.id);
 
             // 🟢 ハイライトカラー決定ロジック
-            const department = lecture.開講;
-            const timeSlot = lecture.時限;
+            const department = lecture.開講 || '';
+            const timeSlot = lecture.時限 || '';
 
             // 優先度1: 学部別カラーをデフォルトとする
             backgroundColor = DEPARTMENT_COLORS[department] || PRIMARY_LECTURE_COLOR;
@@ -395,7 +389,7 @@ export const Home = () => {
                 </Typography>
               </Box>
             </AccordionSummary>
-            
+
             <AccordionDetails sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 3, backgroundColor: '#f5f5f5' }}>
                 {/* 3. 単位数の内訳 */}
                 <Typography variant="subtitle1" sx={{ textAlign: 'center', fontWeight: 'bold' }}>

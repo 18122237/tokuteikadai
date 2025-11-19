@@ -103,3 +103,9 @@ docker exec -it mysql sh -c "mysql -u root -prootpassword tokuteikadai < /agu_sy
 
 * ブラウザで [http://localhost:3000](http://localhost:3000) などにアクセスし、画面が表示されればセットアップ完了です。
 
+* 以降はDocker Desktopを起動した状態で以下のコマンドを実行することで、再度上記アドレスからのアクセスが可能になります。
+
+```bash
+docker compose up --build -d
+```
+

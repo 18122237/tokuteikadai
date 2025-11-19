@@ -45,6 +45,7 @@ class UserCalendarModel(BaseModel):
     semester: list[str] = []
     sat_flag: bool = True
     sixth_period_flag: bool = True
+    is_public: bool = False  # ← 追加
     
     class Config:
         from_attributes = True 

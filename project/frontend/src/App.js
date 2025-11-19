@@ -14,6 +14,8 @@ import { CalendarCreate } from './components/pages/CalendarCreate';
 import { CalendarList } from './components/pages/CalendarList';
 import { RegisterLecture } from './components/pages/RegisterLecture';
 import { ChatProvider } from './components/providers/ChatContext';
+import  PublicScheduleList  from './components/pages/PublicScheduleList';
+import PublicScheduleDetail from './components/pages/PublicScheduleDetail';
 
 function App() {
   return (
@@ -35,6 +37,11 @@ function App() {
           <Route path="/calendar/create" element={<CalendarCreate />} />
           <Route path="/calendar/list" element={<CalendarList />} />
           <Route path="/register-lecture" element={<RegisterLecture />} />
+          <Route path="/public-schedules" element={<PublicScheduleList />} />
+
+          {/* 👇 公開中の時間割 関連ページをここに追加 */}
+            <Route path="/public-schedules" element={<PublicScheduleList />} />
+            <Route path="/public-schedules/:id" element={<PublicScheduleDetail />} />
 
           {/* 404 Not Found */}
           <Route path="*" element={<NotFound />} />

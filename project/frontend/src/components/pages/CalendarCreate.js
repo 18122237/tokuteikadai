@@ -54,6 +54,7 @@ export const CalendarCreate = () => {
         semester: location.state?.calendarData?.semester[0] || '',
         sat_flag: location.state?.calendarData?.sat_flag || false,
         sixth_period_flag: location.state?.calendarData?.sixth_period_flag || false,
+        is_public: location.state?.calendarData?.is_public || false, // ← 追加
     });
 
     const handleChange = (e) => {
@@ -93,6 +94,7 @@ export const CalendarCreate = () => {
             department: formData.department.length > 0 ? formData.department : [], // 空リスト対応
             sat_flag: Boolean(formData.sat_flag), // ブール値に変換
             sixth_period_flag: Boolean(formData.sixth_period_flag), // ブール値に変換
+            is_public: Boolean(formData.is_public), // ← 追加
         };
     
         console.log('送信するリクエストボディ:', requestBody); // デバッグ用ログ
@@ -239,6 +241,16 @@ export const CalendarCreate = () => {
                                         }
                                         label="6時限目あり"
                                     />
+                                    <FormControlLabel
+                                        control={
+                                       <Checkbox
+                                         name="is_public"
+                                         checked={formData.is_public}
+                                         onChange={handleChange}
+                                       />
+                                        }
+                                         label="後輩に公開する"
+                                       />
                                 </FormGroup>
                             </Grid>
                             <Grid item xs={12} style={{ textAlign: 'center' }}>

@@ -50,6 +50,7 @@ class user_calendar(Base):
     semester = Column(JSON)
     sat_flag = Column(Boolean,default=True)
     sixth_period_flag = Column(Boolean,default=True)
+    is_public = Column(Boolean, default=False)
     
     def __repr__(self):
         return f"<user_calendar(id={self.id})>"
