@@ -1,9 +1,18 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import or_,text,and_
-from models import User,aoyama_kougi,user_kougi,user_calendar,chat_log,aoyama_openai_emb
+from models import (
+    User,
+    aoyama_kougi,
+    user_kougi,
+    user_calendar,
+    chat_log,
+    aoyama_openai_emb,
+    RequiredCourse,
+)
 from schemas import UserCreate,UserCalendarModel
 from fastapi import HTTPException
 from datetime import datetime
+from typing import Optional
 import numpy as np
 
 def get_users(db:Session):
@@ -155,6 +164,82 @@ def insert_user_kougi(db: Session, kougi_id: int, calendar_id: int):
 
     # 変更をコミット
     db.commit()
+
+
+def get_required_course_ids(
+    db: Session,
+    grade: int,
+    departments: list[str],
+    campus: Optional[str],
+    semester: Optional[str],
+):
+    """必修科目の条件に一致する講義IDを取得する。"""
+
+    query = db.query(RequiredCourse.kougi_id).filter(RequiredCourse.grade == grade)
+
+    if departments:
+        query = query.filter(RequiredCourse.department.in_(departments))
+
+    if campus:
+        query = query.filter(
+            or_(RequiredCourse.campus == campus, RequiredCourse.campus.is_(None))
+        )
+
+    required_course_ids = [row[0] for row in query.all()]
+
+    if semester:
+        filtered_by_semester = (
+            db.query(aoyama_kougi.id)
+            .filter(
+                aoyama_kougi.id.in_(required_course_ids),
+                aoyama_kougi.時限.like(f"%{semester}%"),
+            )
+            .all()
+        )
+        required_course_ids = [row[0] for row in filtered_by_semester]
+
+    return required_course_ids
+
+
+def register_required_courses(db: Session, calendar_id: int, kougi_ids: list[int]):
+    """カレンダーに必修科目を登録する。"""
+
+    registered: list[int] = []
+    skipped: list[dict] = []
+    already_registered: list[int] = []
+
+    for kougi_id in kougi_ids:
+        existing_entry = (
+            db.query(user_kougi)
+            .filter(
+                user_kougi.calendar_id == calendar_id,
+                user_kougi.kougi_id == kougi_id,
+            )
+            .first()
+        )
+
+        if existing_entry:
+            already_registered.append(kougi_id)
+            continue
+
+        try:
+            conflicts = get_matching_kougi_ids(db, kougi_id, calendar_id)
+        except ValueError as e:
+            skipped.append({"kougi_id": kougi_id, "reason": str(e)})
+            continue
+
+        if conflicts:
+            skipped.append({"kougi_id": kougi_id, "conflicts": conflicts})
+            continue
+
+        insert_user_kougi(db, kougi_id, calendar_id)
+        registered.append(kougi_id)
+
+    return {
+        "registered": registered,
+        "skipped": skipped,
+        "already_registered": already_registered,
+    }
 
 def delete_user_kougi(db: Session, kougi_id: int, calendar_id: int):
     """

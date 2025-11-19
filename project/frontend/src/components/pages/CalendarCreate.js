@@ -44,16 +44,17 @@ export const CalendarCreate = () => {
     const location = useLocation(); // 編集用のデータを受け取る
     const { userId } = useSetup();
 
-    // 初期データ (編集モードか作成モードか判断)
-    const isEditMode = location.state?.calendarData ? true : false;
+    const initialCalendar = location.state?.calendarData;
+    const [calendarId, setCalendarId] = useState(initialCalendar?.id || null);
+    const isEditMode = Boolean(calendarId);
     const [formData, setFormData] = useState({
-        id: isEditMode ? location.state.calendarData.id : 0,
-        calendar_name: location.state?.calendarData?.calendar_name || '',
-        campus: location.state?.calendarData?.campus[0] || '',
-        department: location.state?.calendarData?.department || [],
-        semester: location.state?.calendarData?.semester[0] || '',
-        sat_flag: location.state?.calendarData?.sat_flag || false,
-        sixth_period_flag: location.state?.calendarData?.sixth_period_flag || false,
+        calendar_name: initialCalendar?.calendar_name || '',
+        grade: initialCalendar?.grade || '',
+        campus: initialCalendar?.campus?.[0] || '',
+        department: initialCalendar?.department || [],
+        semester: initialCalendar?.semester?.[0] || '',
+        sat_flag: initialCalendar?.sat_flag || false,
+        sixth_period_flag: initialCalendar?.sixth_period_flag || false,
     });
 
     const handleChange = (e) => {
@@ -74,46 +75,113 @@ export const CalendarCreate = () => {
         }
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-    
+    const buildCalendarRequestBody = () => ({
+        id: calendarId || 0,
+        user_id: userId,
+        calendar_name: formData.calendar_name.trim() || "",
+        campus: formData.campus ? [formData.campus] : [],
+        semester: formData.semester ? [formData.semester] : [],
+        department: formData.department.length > 0 ? formData.department : [],
+        sat_flag: Boolean(formData.sat_flag),
+        sixth_period_flag: Boolean(formData.sixth_period_flag),
+    });
+
+    const saveCalendar = async (navigateAfterSave = false) => {
         if (!userId) {
-            alert('ユーザー情報が取得できませんでした。');
-            return;
+            throw new Error('ユーザー情報が取得できませんでした。');
         }
 
-        const mode = isEditMode ? 'u' : 'c'; // 作成か編集か
-        // リクエストボディの作成
-        const requestBody = {
-            id: isEditMode ? formData.id : 0, // 編集時は既存のカレンダーIDを使用
-            user_id: userId, // ユーザー ID を設定
-            calendar_name: formData.calendar_name.trim() || "", // 必須フィールド（空白をトリム）
-            campus: formData.campus ? [formData.campus] : [], // 単一値をリストに変換
-            semester: formData.semester ? [formData.semester] : [], // 単一値をリストに変換
-            department: formData.department.length > 0 ? formData.department : [], // 空リスト対応
-            sat_flag: Boolean(formData.sat_flag), // ブール値に変換
-            sixth_period_flag: Boolean(formData.sixth_period_flag), // ブール値に変換
-        };
-    
+        const mode = calendarId ? 'u' : 'c';
+        const requestBody = buildCalendarRequestBody();
+
         console.log('送信するリクエストボディ:', requestBody); // デバッグ用ログ
-    
+
+        const response = await axios.post(
+            `${apiUrl}/calendar/c-u/${mode}`,
+            requestBody,
+            { headers: { "Content-Type": "application/json" }, withCredentials: true }
+        );
+
+        const savedId = response.data.calendar.id;
+        setCalendarId(savedId);
+
+        if (navigateAfterSave) {
+            alert(mode === 'u' ? 'カレンダーが更新されました。' : 'カレンダーが作成されました。');
+            navigate(mode === 'u' ? '/calendar/list' : '/');
+        }
+
+        return { savedId, mode };
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
         try {
-            await axios.post(
-                `${apiUrl}/calendar/c-u/${mode}`,
-                requestBody, // リクエストボディ
-                { headers: { "Content-Type": "application/json" }, withCredentials: true }
-            );
-            alert(isEditMode ? 'カレンダーが更新されました。' : 'カレンダーが作成されました。');
-            navigate(isEditMode ? '/calendar/list' : '/'); // 成功後にリダイレクト
+            await saveCalendar(true);
         } catch (error) {
-            console.error('カレンダー作成失敗:', error.response?.data || error)
-    
-            // APIからのエラー詳細を表示
+            console.error('カレンダー作成失敗:', error.response?.data || error);
+
             if (error.response?.data?.detail) {
                 console.error('エラー詳細:', error.response.data.detail);
                 alert(`カレンダー作成に失敗しました: ${error.response.data.detail.map(d => d.msg).join(', ')}`);
             } else {
                 alert('カレンダー作成に失敗しました');
+            }
+        }
+    };
+
+    const handleRegisterRequiredCourses = async () => {
+        const selectedDepartments = formData.department.filter((dep) => dep !== '指定なし');
+        const gradeNumber = parseInt(formData.grade?.replace('年', ''), 10);
+
+        if (!userId) {
+            alert('ユーザー情報が取得できませんでした。');
+            return;
+        }
+
+        if (!formData.campus || !formData.semester || selectedDepartments.length === 0 || Number.isNaN(gradeNumber)) {
+            alert('学年、学部、学期、キャンパスの情報を入力してください。');
+            return;
+        }
+
+        let targetCalendarId = calendarId;
+
+        try {
+            if (!targetCalendarId) {
+                const { savedId } = await saveCalendar(false);
+                targetCalendarId = savedId;
+            }
+
+            const response = await axios.post(
+                `${apiUrl}/required_courses/register`,
+                {
+                    calendar_id: targetCalendarId,
+                    grade: gradeNumber,
+                    campus: formData.campus || null,
+                    semester: formData.semester || null,
+                    departments: selectedDepartments,
+                },
+                { headers: { "Content-Type": "application/json" }, withCredentials: true }
+            );
+
+            const { registered = [], skipped = [], already_registered = [] } = response.data;
+            const messages = [
+                `登録した必修科目: ${registered.length}件`,
+                `既に登録済み: ${already_registered.length}件`,
+            ];
+
+            if (skipped.length > 0) {
+                messages.push(`時間割の重複などで登録できなかった科目: ${skipped.length}件`);
+            }
+
+            alert(messages.join('\n'));
+        } catch (error) {
+            console.error('必修科目登録失敗:', error.response?.data || error);
+
+            if (error.response?.data?.detail) {
+                alert(`必修科目登録に失敗しました: ${error.response.data.detail}`);
+            } else {
+                alert('必修科目登録に失敗しました');
             }
         }
     };
@@ -241,7 +309,11 @@ export const CalendarCreate = () => {
                                     />
                                 </FormGroup>
                             </Grid>
-                            <Grid item xs={12} style={{ textAlign: 'center' }}>
+                            <Grid
+                                item
+                                xs={12}
+                                style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}
+                            >
                                 <Button
                                     type="submit"
                                     variant="contained"
@@ -249,6 +321,15 @@ export const CalendarCreate = () => {
                                     style={{ width: '200px' }}
                                 >
                                     {isEditMode ? '更新' : '作成'}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outlined"
+                                    color="secondary"
+                                    onClick={handleRegisterRequiredCourses}
+                                    style={{ width: '200px' }}
+                                >
+                                    必修科目を登録
                                 </Button>
                             </Grid>
                         </Grid>
