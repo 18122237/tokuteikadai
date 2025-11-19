@@ -45,6 +45,14 @@ class UserCalendarModel(BaseModel):
     semester: list[str] = []
     sat_flag: bool = True
     sixth_period_flag: bool = True
-    
+
     class Config:
-        from_attributes = True 
+        from_attributes = True
+
+
+class RequiredCourseRegisterRequest(BaseModel):
+    calendar_id: int
+    grade: int
+    campus: Optional[str] = None
+    semester: Optional[str] = None
+    departments: list[str] = []

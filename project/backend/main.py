@@ -10,10 +10,11 @@ from crud import(
     get_matching_kougi_ids,insert_user_kougi,
     delete_user_kougi,calendar_list,get_user_kougi,
     create_calendar,update_calendar,delete_calendar,get_calendar,
-    update_user_def_calendar,insert_chat,get_kougi_summary
+    update_user_def_calendar,insert_chat,get_kougi_summary,
+    get_required_course_ids,register_required_courses
 )
 from models import User
-from schemas import User, UserCreate,SearchRequest,UserCalendarModel
+from schemas import User, UserCreate,SearchRequest,UserCalendarModel,RequiredCourseRegisterRequest
 from database import SessionLocal, engine, Base
 import sys
 import uvicorn
@@ -79,6 +80,49 @@ def init_required_courses():
 
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.post("/required_courses/register")
+def register_required_courses_endpoint(
+    request: Request,
+    payload: RequiredCourseRegisterRequest,
+    db: Session = Depends(get_db),
+):
+    user_id = get_userid(request)
+
+    try:
+        owner_id = get_calendar(payload.calendar_id, db).user_id
+    except Exception:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+
+    if owner_id != user_id:
+        return {"detail": "not login"}
+
+    try:
+        required_ids = get_required_course_ids(
+            db,
+            payload.grade,
+            payload.departments,
+            payload.campus,
+            payload.semester,
+        )
+
+        registration_result = register_required_courses(
+            db, payload.calendar_id, required_ids
+        )
+
+        return {
+            "required_course_ids": required_ids,
+            **registration_result,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to register required courses: {str(e)}",
+        )
 
 
 app.add_exception_handler(HTTPException, http_exception_handler)
