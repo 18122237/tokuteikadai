@@ -179,6 +179,19 @@ export const Home = () => {
                 >
                     保存済みのカレンダー
                 </Button>
+                <Button
+    variant="contained"
+    color="secondary"
+    onClick={() => navigate('/public-schedules')}
+    sx={{
+        flex: '1 0 auto',
+        minWidth: '150px',
+        maxWidth: '200px',
+    }}
+>
+    公開中の時間割を見る
+</Button>
+
             </Box>
 
                 {defCalendarInfo ? (

@@ -30,6 +30,10 @@ from error_handlers import (
 )
 from sqlalchemy.exc import IntegrityError, OperationalError
 
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -379,6 +383,95 @@ async def get_departments():
 @app.get("/semesters")
 async def get_semesters():
     return {"semesters": SEMESTERS}
+
+# 公開されているカレンダー一覧を取得（後輩閲覧用）
+@app.get("/calendar/public")
+def get_public_calendars(db: Session = Depends(get_db)):
+    calendars = db.query(user_calendar).filter(user_calendar.is_public == True).all()
+    return {"public_calendars": calendars}
+
+# 公開カレンダー詳細取得
+@app.get("/calendar/public/{calendar_id}")
+def get_public_calendar_detail(calendar_id: int, db: Session = Depends(get_db)):
+    """
+    公開されたカレンダーの詳細情報と登録講義を取得するAPI
+    """
+    from models import user_calendar, user_kougi, aoyama_kougi
+
+    # カレンダーを取得
+    calendar = db.query(user_calendar).filter(user_calendar.id == calendar_id).first()
+    if not calendar:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+
+    if not calendar.is_public:
+        raise HTTPException(status_code=403, detail="This calendar is not public")
+
+    # 講義を取得
+    registered = db.query(user_kougi).filter(user_kougi.calendar_id == calendar_id).all()
+
+    # 講義の詳細情報をまとめる
+    lecture_data = []
+    for item in registered:
+        kougi = db.query(aoyama_kougi).filter(aoyama_kougi.id == item.kougi_id).first()
+        if kougi:
+            lecture_data.append({
+                "period": item.period,
+                "subject": kougi.科目,
+                "teacher": kougi.教員,
+                "semester": kougi.開講,
+                "url": kougi.url,
+            })
+
+    return {
+        "calendar_id": calendar.id,
+        "calendar_name": calendar.calendar_name,
+        "campus": calendar.campus,
+        "department": calendar.department,
+        "semester": calendar.semester,
+        "sat_flag": calendar.sat_flag,
+        "sixth_period_flag": calendar.sixth_period_flag,
+        "lectures": lecture_data
+    }
+
+
+# ======== 時間割の公開設定API ========
+
+from models import user_calendar  # ← 既に import されていなければ追加してください
+
+@app.put("/calendar/{calendar_id}/public")
+def update_calendar_public(
+    request: Request,
+    calendar_id: int,
+    is_public: bool,
+    db: Session = Depends(get_db)
+):
+    """
+    時間割（user_calendar）の公開設定を変更するAPI
+    - 認証済みユーザーのみ
+    - 自分のカレンダーだけ変更可能
+    """
+    user_id = get_userid(request)  # 現在のログインユーザーのIDを取得
+
+    # カレンダーを取得
+    calendar = get_calendar(calendar_id, db)
+    if not calendar:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+
+    # 自分のカレンダーでなければ拒否
+    if calendar.user_id != user_id:
+        raise HTTPException(status_code=403, detail="You are not the owner of this calendar")
+
+    # 公開設定を更新
+    calendar.is_public = is_public
+    db.commit()
+    db.refresh(calendar)
+
+    return {
+        "calendar_id": calendar.id,
+        "is_public": calendar.is_public,
+        "detail": "公開設定を更新しました"
+    }
+
 
 def custom_openapi():
     if app.openapi_schema:
