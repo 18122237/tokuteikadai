@@ -1,5 +1,6 @@
 import React, { useContext, useMemo, useState, useEffect } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { UserContext } from '../providers/UserProvider';
 import { Header } from '../templates/Header';
 import { Footer } from '../templates/Footer';
@@ -23,12 +24,13 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'; 
 
+const apiUrl = process.env.REACT_APP_API_URL;
+
 // ==========================================================
 // 定数とヘルパー関数
 // ==========================================================
 const GRADUATION_KEY = 'graduation_required_units';
-const ACQUIRED_KEY = 'accumulated_acquired_units'; 
-
+const ACQUIRED_KEY = 'accumulated_acquired_units';
 const DEPARTMENT_COLORS = {
   '経済学部': '#2196f3',
   '法学部': '#ff9800',
@@ -39,7 +41,6 @@ const DEPARTMENT_COLORS = {
   '社会情報学部': '#8bc34a',
   '理工学部共通': '#ffeb3b',
 };
-
 const CAMPUS_HIGHLIGHTS = {
   '青山': 'rgba(255, 255, 255, 0.9)',
   '相模原': '#e0f7fa',
@@ -57,32 +58,54 @@ const getLectureMemoTitle = (lectureId) => {
     return undefined;
   }
 };
-
 // ==========================================================
 // Home コンポーネント開始
 // ==========================================================
 
 export const Home = () => {
   const { isLogined } = useContext(UserContext);
-  const { defCalendarInfo, lectureInfo } = useSetup();
+  const { defCalendarInfo, lectureInfo, refetch } = useSetup();
   const navigate = useNavigate();
+  
+  // 必修科目を自動登録する処理
+  const handleRegisterRequiredCourses = async () => {
+     if (!defCalendarInfo) {
+      alert("カレンダーが選択されていません。");
+      return;
+    }
 
-  // 必修科目を初期登録する API 呼び出し（ボタンハンドラ）
-  const handleInitRequiredCourses = async () => {
-    const confirmed = window.confirm("必修科目データを登録しますか？");
-    if (!confirmed) return;
+    const gradeInput = window.prompt("登録する学年を半角数字で入力してください (例: 1)", "1");
+    const grade = parseInt(gradeInput, 10);
+    
+    if (isNaN(grade) || grade < 1 || grade > 4) {
+        if (gradeInput !== null) alert("正しい学年を入力してください。");
+        return;
+    }
 
     try {
-      const response = await fetch("http://localhost:8000/required_courses/init", {
-        method: "POST",
-      });
+        const response = await axios.post(
+            `${apiUrl}/kougi/register_required`,
+            null,
+            {
+                params: { 
+                    calendar_id: defCalendarInfo.id,
+                    grade: grade
+                },
+                withCredentials: true 
+            }
+        );
 
-      const data = await response.json();
-      console.log("📦 API Response:", data);
-      alert(data.message || data.error || "不明なレスポンスです");
+        const { registered, skipped } = response.data;
+        if (response.data.message) {
+            alert(`処理が完了しました。\n登録数: ${registered}\nスキップ(重複): ${skipped}`);
+            refetch(); // 画面更新
+        } else {
+            alert("登録処理に失敗した可能性があります。");
+        }
+
     } catch (error) {
-      console.error("❌ Fetch Error:", error);
-      alert("通信エラーが発生しました: " + error);
+        console.error("登録失敗:", error);
+        alert("必修科目の登録に失敗しました。" + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -101,18 +124,15 @@ export const Home = () => {
       return total + unit;
     }, 0);
   }, [lectureInfo]);
-  
   // 🟢 既取得単位数と現在のカレンダーの単位数を合わせた合計単位数
   const totalPlannedUnits = useMemo(() => {
       return currentCalendarUnits + accumulatedUnits;
   }, [currentCalendarUnits, accumulatedUnits]);
-
   // 🟢 残り必要単位数の計算
   const remainingUnits = useMemo(() => {
     const remaining = graduationUnits > totalPlannedUnits ? graduationUnits - totalPlannedUnits : 0;
     return remaining;
   }, [graduationUnits, totalPlannedUnits]);
-
   // 🟢 初期読み込み（ローカルストレージから要件と既取得単位を取得）
   useEffect(() => {
     const savedGradUnits = localStorage.getItem(GRADUATION_KEY);
@@ -129,8 +149,7 @@ export const Home = () => {
       setInputAccumulatedUnits(savedAcquiredUnits);
     }
   }, []);
-
-  // ------------------------------------------------------------------
+// ------------------------------------------------------------------
 
   // useMemo を使用して、時間割のレンダリング結果をメモ化
   const calendarRows = useMemo(() => {
@@ -190,10 +209,8 @@ export const Home = () => {
           const lectureId = lectureMap[buttonId];
           lecture = lectureDetails?.[lectureId];
           content = lecture?.科目 || '－';
-
           if (lecture) {
             memoTitle = getLectureMemoTitle(lecture.id);
-
             // 🟢 ハイライトカラー決定ロジック
             const department = lecture.開講 || '';
             const timeSlot = lecture.時限 || '';
@@ -304,8 +321,7 @@ export const Home = () => {
       })
       .filter(Boolean);
   }, [lectureInfo]);
-
-  // ------------------------------------------------------------------
+// ------------------------------------------------------------------
 
   // 卒業要件の保存処理
   const handleSaveRequirement = () => {
@@ -319,7 +335,6 @@ export const Home = () => {
       setInputUnits(graduationUnits.toString()); 
     }
   };
-  
   // 既取得単位数の保存処理
   const handleSaveAcquiredUnits = () => {
     const parsedUnits = parseFloat(inputAccumulatedUnits);
@@ -332,7 +347,6 @@ export const Home = () => {
       setInputAccumulatedUnits(accumulatedUnits.toString()); 
     }
   };
-
   // 🟢 ログインチェック（Hooksの後に配置）
   if (!isLogined) {
     return <Navigate to="/login" />;
@@ -409,7 +423,7 @@ export const Home = () => {
                         inputProps={{ min: "0", step: "0.5" }} 
                     />
                     <Button variant="contained" color="secondary" onClick={handleSaveAcquiredUnits}>
-                        設定
+                      設定
                     </Button>
                 </Box>
                 
@@ -470,17 +484,17 @@ export const Home = () => {
             保存済みのカレンダー
           </Button>
           <Button
-    variant="contained"
-    color="secondary"
-    onClick={() => navigate('/public-schedules')}
-    sx={{
-        flex: '1 0 auto',
-        minWidth: '150px',
-        maxWidth: '200px',
-    }}
->
-    公開中の時間割を見る
-</Button>
+            variant="contained"
+            color="secondary"
+            onClick={() => navigate('/public-schedules')}
+            sx={{
+                flex: '1 0 auto',
+                minWidth: '150px',
+                maxWidth: '200px',
+            }}
+          >
+            公開中の時間割を見る
+        </Button>
 
         </Box>
 
@@ -547,10 +561,10 @@ export const Home = () => {
         <Button
            variant="contained"
            color="primary"
-            sx={{ mt: 2 }}
-            onClick={handleInitRequiredCourses}
+           sx={{ mt: 2 }}
+           onClick={handleRegisterRequiredCourses}
       >
-            必修科目を登録する
+            必修科目を自動登録する
         </Button>
 
 

@@ -12,7 +12,7 @@ from crud import(
     create_calendar,update_calendar,delete_calendar,get_calendar,
     update_user_def_calendar,insert_chat,get_kougi_summary
 )
-from models import User
+from models import User, RequiredCourse
 from schemas import User, UserCreate,SearchRequest,UserCalendarModel
 from database import SessionLocal, engine, Base
 import sys
@@ -506,6 +506,70 @@ def update_calendar_public(
     }
 
 
+# 必修科目の一括登録API (新規追加)
+@app.post("/kougi/register_required")
+def api_register_required_courses(
+    request: Request,
+    calendar_id: int,
+    grade: int,  # 学年を指定 (例: 1)
+    db: Session = Depends(get_db)
+):
+    user_id = get_userid(request)
+    
+    # カレンダーの所有権確認
+    calendar = get_calendar(calendar_id, db)
+    if calendar.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # カレンダーに設定されている学部を取得 (リストの1つ目を使用すると仮定)
+    if not calendar.department or len(calendar.department) == 0:
+        raise HTTPException(status_code=400, detail="学部が設定されていません")
+    
+    target_dept = calendar.department[0] # 例: "社会情報学部"
+    
+    # "学部" という文字を削除して検索 ("社会情報学部" -> "社会情報" でヒットさせるため)
+    search_dept = target_dept.replace("学部", "")
+
+    # 必修科目テーブルから講義IDを取得
+    required_courses = db.query(RequiredCourse).filter(
+        RequiredCourse.department.like(f"%{search_dept}%"),
+        RequiredCourse.grade == grade
+    ).all()
+
+    if not required_courses:
+        return {"message": "該当する必修科目が見つかりませんでした。", "count": 0}
+
+    registered_count = 0
+    skipped_count = 0
+    errors = []
+
+    # 講義登録処理 (既存の /kougi/insert のロジックを流用)
+    for course in required_courses:
+        try:
+            kougi_id = course.kougi_id
+            
+            # 重複チェック (同じ時限に既に授業があるか)
+            id_list = get_matching_kougi_ids(db, kougi_id, calendar_id)
+            
+            if id_list == []:
+                # 重複がなければ登録
+                insert_user_kougi(db, kougi_id, calendar_id)
+                registered_count += 1
+            else:
+                # 重複がある場合はスキップ (既に登録済みの場合も含む)
+                skipped_count += 1
+                
+        except Exception as e:
+            errors.append({"kougi_id": kougi_id, "error": str(e)})
+
+    return {
+        "message": "処理完了",
+        "registered": registered_count,
+        "skipped": skipped_count,
+        "errors": errors
+    }
+
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -551,7 +615,7 @@ async def get_swagger_ui():
                 url: "{openapi_url}",
                 dom_id: '#swagger-ui',
                 presets: [
-                    SwaggerUIBundle.presets.apis
+                  SwaggerUIBundle.presets.apis
                 ],
                 layout: "BaseLayout"
             }});
@@ -564,9 +628,6 @@ async def get_swagger_ui():
     html_content = html_template.format(openapi_url=openapi_url)
 
     return HTMLResponse(content=html_content)
-
-
-
 
 
 async def start_uvicorn():
