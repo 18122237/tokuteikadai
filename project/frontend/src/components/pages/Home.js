@@ -61,27 +61,59 @@ const getLectureMemoTitle = (lectureId) => {
 export const Home = () => {
   const { isLogined } = useContext(UserContext);
   const { defCalendarInfo, lectureInfo } = useSetup();
+  const calendarId = defCalendarInfo?.id || defCalendarInfo?.calendar_id;
   const navigate = useNavigate();
 
-  const handleInitRequiredCourses = async () => {
-  const confirmed = window.confirm("必修科目データを登録しますか？");
-  if (!confirmed) return;
+  // ✅ ボタン一つで「CSV → DB」と「自動履修登録」を両方やる関数
+  const handleInitAndAutoRegisterRequiredCourses = async () => {
+    if (!calendarId) {
+      alert("カレンダーが選択されていません");
+      return;
+    }
 
-  try {
-    const response = await fetch("http://localhost:8000/required_courses/init", {
-      method: "POST",
-    });
+    const confirmed = window.confirm(
+      "必修科目CSVをDBに登録し、そのあとこのカレンダーに必修科目を自動で履修登録します。よろしいですか？"
+    );
+    if (!confirmed) return;
 
-    const data = await response.json();
-    console.log("📦 API Response:", data);
-    alert(data.message || data.error || "不明なレスポンスです");
+    try {
+      // ① 必修科目 CSV → DB 登録
+      const initResponse = await fetch("http://localhost:8000/required_courses/init", {
+        method: "POST",
+      });
+      const initData = await initResponse.json();
+      console.log("📦 /required_courses/init Response:", initData);
 
-  } catch (error) {
-    console.error("❌ Fetch Error:", error);
-    alert("通信エラーが発生しました: " + error);
-  }
-};
+      if (!initResponse.ok || initData.error) {
+        alert(initData.error || "必修科目データ登録でエラーが発生しました");
+        return;
+      }
 
+      // ② 必修科目をカレンダーに自動登録
+      const autoResponse = await fetch(
+        `http://localhost:8000/required/auto_register?calendar_id=${calendarId}`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      const autoData = await autoResponse.json();
+      console.log("✅ /required/auto_register Response:", autoData);
+
+      if (autoResponse.ok && autoData.success) {
+        alert(
+          `必修科目の自動登録が完了しました。\n登録数: ${autoData.success.length}`
+        );
+      } else {
+        alert("自動登録に失敗しました");
+      }
+
+    } catch (error) {
+      console.error("❌ 通信エラー:", error);
+      alert("通信エラーが発生しました: " + error);
+    }
+  };
 
   // 🟢 HOOKS: 常にトップレベルで呼び出す
   const [graduationUnits, setGraduationUnits] = useState(0);
@@ -131,7 +163,6 @@ export const Home = () => {
 
   // useMemo を使用して、時間割のレンダリング結果をメモ化
   const calendarRows = useMemo(() => {
-    // 🟢 条件チェックをロジックの最上部に移動 (Hooksの外)
     if (!defCalendarInfo) return []; 
     
     const days = ['月', '火', '水', '木', '金'];
@@ -191,14 +222,12 @@ export const Home = () => {
           if (lecture) {
             memoTitle = getLectureMemoTitle(lecture.id);
 
-            // 🟢 ハイライトカラー決定ロジック
+            // ハイライトカラー決定ロジック
             const department = lecture.開講;
             const timeSlot = lecture.時限;
 
-            // 優先度1: 学部別カラーをデフォルトとする
             backgroundColor = DEPARTMENT_COLORS[department] || PRIMARY_LECTURE_COLOR;
             
-            // 優先度2: キャンパス別ハイライト (背景色を調整)
             let campusHighlight = null;
             if (timeSlot.includes('相模原')) {
                 campusHighlight = CAMPUS_HIGHLIGHTS['相模原'];
@@ -206,7 +235,6 @@ export const Home = () => {
                 campusHighlight = CAMPUS_HIGHLIGHTS['青山'];
             }
             
-            // キャンパスハイライトがあれば適用
             backgroundColor = campusHighlight || backgroundColor;
           }
 
@@ -231,7 +259,6 @@ export const Home = () => {
                   maxWidth: '180px',
                   minHeight: '80px',
                   lineHeight: 1.2,
-                  // 🟢 ハイライトカラーを背景色に直接適用
                   backgroundColor: backgroundColor,
                   color: lecture ? (['#ffeb3b', '#ffc107', 'rgba(255, 255, 255, 0.9)', '#e0f7fa'].includes(backgroundColor) ? 'black' : 'white') : 'white',
                   '&:hover': {
@@ -252,7 +279,6 @@ export const Home = () => {
                   <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '13px' }}>
                     {content}
                   </Typography>
-                  {/* メモがある場合に表示 */}
                   {memoTitle && (
                     <Typography 
                       variant="caption" 
@@ -284,7 +310,6 @@ export const Home = () => {
 
   // 🟢 useMemo をトップレベルに維持
   const unmatchedLectures = useMemo(() => {
-    // 🟢 条件チェックをロジックの最上部に移動 (Hooksの外)
     if (!lectureInfo?.registered_user_kougi) return [];
 
     return lectureInfo.registered_user_kougi
@@ -304,7 +329,6 @@ export const Home = () => {
 
   // ------------------------------------------------------------------
 
-  // 卒業要件の保存処理
   const handleSaveRequirement = () => {
     const parsedUnits = parseFloat(inputUnits);
     if (!isNaN(parsedUnits) && parsedUnits >= 0) {
@@ -317,7 +341,6 @@ export const Home = () => {
     }
   };
   
-  // 既取得単位数の保存処理
   const handleSaveAcquiredUnits = () => {
     const parsedUnits = parseFloat(inputAccumulatedUnits);
     if (!isNaN(parsedUnits) && parsedUnits >= 0) {
@@ -330,7 +353,7 @@ export const Home = () => {
     }
   };
 
-  // 🟢 ログインチェック（Hooksの後に配置）
+  // 🟢 ログインチェック
   if (!isLogined) {
     return <Navigate to="/login" />;
   }
@@ -370,7 +393,6 @@ export const Home = () => {
               sx={{ borderBottom: '1px solid #ddd' }}
             >
               <Box sx={{ flexGrow: 1, textAlign: 'center', py: 0.5 }}>
-                {/* 1. 残り必要単位数の表示（通常時） */}
                 <Typography
                   variant="h5"
                   sx={{ 
@@ -380,7 +402,6 @@ export const Home = () => {
                 >
                   🎓 残り必要単位数: {remainingUnits.toFixed(1)} 単位
                 </Typography>
-                {/* 2. 合計取得予定単位数と要件のサマリ */}
                 <Typography variant="caption" color="textSecondary">
                   (予定 {totalPlannedUnits.toFixed(1)} / 要件 {graduationUnits.toFixed(1)} 単位)
                 </Typography>
@@ -388,12 +409,10 @@ export const Home = () => {
             </AccordionSummary>
             
             <AccordionDetails sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 3, backgroundColor: '#f5f5f5' }}>
-                {/* 3. 単位数の内訳 */}
                 <Typography variant="subtitle1" sx={{ textAlign: 'center', fontWeight: 'bold' }}>
                     単位数内訳: {accumulatedUnits.toFixed(1)} (既取得) + {currentCalendarUnits.toFixed(1)} (カレンダー予定)
                 </Typography>
 
-                {/* 4. 既取得単位数設定 UI */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <TextField
                         label="既取得単位数 (累計)"
@@ -410,7 +429,6 @@ export const Home = () => {
                     </Button>
                 </Box>
                 
-                {/* 5. 卒業要件設定 UI */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <TextField
                         label="卒業要件単位数"
@@ -528,15 +546,16 @@ export const Home = () => {
             未設定
           </Typography>
         )}
-        <Button
-           variant="contained"
-           color="primary"
-            sx={{ mt: 2 }}
-            onClick={handleInitRequiredCourses}
-      >
-            必修科目を登録する
-        </Button>
 
+        {/* ⭐ ここが「CSV登録＋自動履修登録」のボタン */}
+        <Button
+          variant="contained"
+          color="primary"
+          sx={{ mt: 2 }}
+          onClick={handleInitAndAutoRegisterRequiredCourses}
+        >
+          必修科目を登録して自動で履修登録する
+        </Button>
 
         <Box
           sx={{
@@ -614,7 +633,7 @@ export const Home = () => {
         </Box>
       </Box>
 
-      {/* メモ欄を追加 */}
+      {/* メモ欄 */}
       <Box
         sx={{
           mt: 4,

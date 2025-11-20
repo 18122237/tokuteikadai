@@ -35,7 +35,7 @@ const SEMESTERS = [
     "指定なし", "前期", "通年", "後期"
 ];
 
-const GRADE = [
+const grade = [
     "1年","2年","3年","4年"
 ];
 
@@ -52,6 +52,9 @@ export const CalendarCreate = () => {
         campus: location.state?.calendarData?.campus[0] || '',
         department: location.state?.calendarData?.department || [],
         semester: location.state?.calendarData?.semester[0] || '',
+        grade: location.state?.calendarData?.grade
+          ? `${location.state.calendarData.grade}年`  // ← ここ超重要！
+          : "",
         sat_flag: location.state?.calendarData?.sat_flag || false,
         sixth_period_flag: location.state?.calendarData?.sixth_period_flag || false,
     });
@@ -75,12 +78,26 @@ export const CalendarCreate = () => {
     };
 
     const handleSubmit = async (e) => {
-        e.preventDefault();
-    
-        if (!userId) {
-            alert('ユーザー情報が取得できませんでした。');
-            return;
+    e.preventDefault();
+
+    if (!userId) {
+        alert('ユーザー情報が取得できませんでした。');
+        return;
+    }
+
+    // --- ★ 学年（grade）の安全変換処理 ★ ---
+    let gradeNumber = null;
+
+    if (formData.grade) {
+        // formData.grade が "1年" "2年" の場合 → 数字に変換
+        if (typeof formData.grade === "string") {
+            gradeNumber = Number(formData.grade.replace("年", ""));
+        } 
+        // 編集画面で DB から 1,2,3 の数字が来た場合
+        else if (typeof formData.grade === "number") {
+            gradeNumber = formData.grade;
         }
+    }
 
         const mode = isEditMode ? 'u' : 'c'; // 作成か編集か
         // リクエストボディの作成
@@ -91,6 +108,7 @@ export const CalendarCreate = () => {
             campus: formData.campus ? [formData.campus] : [], // 単一値をリストに変換
             semester: formData.semester ? [formData.semester] : [], // 単一値をリストに変換
             department: formData.department.length > 0 ? formData.department : [], // 空リスト対応
+            grade: gradeNumber,   // ← これ追加！
             sat_flag: Boolean(formData.sat_flag), // ブール値に変換
             sixth_period_flag: Boolean(formData.sixth_period_flag), // ブール値に変換
         };
@@ -144,11 +162,14 @@ export const CalendarCreate = () => {
                                         onChange={handleChange}
                                         label="学年"
                                     >
-                                        {GRADE.map((grade) => (
-                                            <MenuItem key={grade} value={grade}>
-                                                {grade}
-                                            </MenuItem>
-                                        ))}
+                                        {grade.map((g) => {
+                                           const yearNumber = Number(g.replace("年", ""));
+                                           return (
+                                              <MenuItem key={yearNumber} value={yearNumber}>
+                                                 {g}
+                                              </MenuItem>
+                                           );
+                                        })}
                                     </Select>
                                 </FormControl>
                             </Grid>

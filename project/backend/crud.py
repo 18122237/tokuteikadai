@@ -189,10 +189,17 @@ def get_user_kougi(calendar_id: int, db: Session):
 
 def create_calendar(calendar_data: UserCalendarModel, db: Session):
     """カレンダーの新規作成処理"""
-    # PydanticモデルからSQLAlchemyモデルを生成
-    calendar_data_dict = calendar_data.model_dump(exclude={"id"})  # idを除外
-    new_calendar = user_calendar(**calendar_data_dict)  # SQLAlchemyモデルに変換
     
+    new_calendar = user_calendar(
+        user_id=calendar_data.user_id,
+        calendar_name=calendar_data.calendar_name,
+        campus=calendar_data.campus,              # JSON
+        department=calendar_data.department,      # JSON
+        semester=calendar_data.semester,          # JSON
+        grade=calendar_data.grade,                # ★ここが今回超重要！！
+        sat_flag=calendar_data.sat_flag,
+        sixth_period_flag=calendar_data.sixth_period_flag,
+    )
     db.add(new_calendar)  # 新しいレコードを追加    
     db.commit()  # 変更をコミット
     db.refresh(new_calendar)  # 挿入されたデータを更新
@@ -209,10 +216,14 @@ def update_calendar(calendar_data: UserCalendarModel, db: Session):
     if not calendar:
         raise HTTPException(status_code=404, detail="Calendar not found")
     
-    # Pydanticモデルを辞書に変換して更新データを反映
-    update_data = calendar_data.model_dump()
-    for key, value in update_data.items():
-        setattr(calendar, key, value)
+    # ★ ここが重要：DB に存在するフィールドだけ個別に更新する
+    calendar.calendar_name = calendar_data.calendar_name
+    calendar.campus = calendar_data.campus
+    calendar.department = calendar_data.department
+    calendar.semester = calendar_data.semester
+    calendar.grade = calendar_data.grade  # ←★これが今回の主役！！
+    calendar.sat_flag = calendar_data.sat_flag
+    calendar.sixth_period_flag = calendar_data.sixth_period_flag
     
     db.commit()  # 変更をコミット
     db.refresh(calendar)  # 更新されたデータを取得

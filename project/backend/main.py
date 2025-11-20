@@ -3,17 +3,17 @@ from fastapi.responses import HTMLResponse
 from fastapi.openapi.utils import get_openapi
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
-from openai_search import subset_search_batch,generate_input
-from crud import(
-    get_user,get_user_by_name,
-    create_user,filter_course_ids, read_db,
-    get_matching_kougi_ids,insert_user_kougi,
-    delete_user_kougi,calendar_list,get_user_kougi,
-    create_calendar,update_calendar,delete_calendar,get_calendar,
-    update_user_def_calendar,insert_chat,get_kougi_summary
+from openai_search import subset_search_batch, generate_input
+from crud import (
+    get_user, get_user_by_name,
+    create_user, filter_course_ids, read_db,
+    get_matching_kougi_ids, insert_user_kougi,
+    delete_user_kougi, calendar_list, get_user_kougi,
+    create_calendar, update_calendar, delete_calendar, get_calendar,
+    update_user_def_calendar, insert_chat, get_kougi_summary
 )
-from models import User
-from schemas import User, UserCreate,SearchRequest,UserCalendarModel
+from models import User, RequiredCourse  # ★ RequiredCourse を追加
+from schemas import User as UserSchema, UserCreate, SearchRequest, UserCalendarModel
 from database import SessionLocal, engine, Base
 import sys
 import uvicorn
@@ -53,6 +53,7 @@ import csv
 import os
 from db_config import create_db_connection
 
+
 @app.post("/required_courses/init")
 def init_required_courses():
     try:
@@ -64,13 +65,21 @@ def init_required_courses():
         cursor = connection.cursor()
 
         with open(CSV_PATH, "r", encoding="utf-8-sig") as f:
-
             reader = csv.DictReader(f)
             for row in reader:
-                cursor.execute("""
-                    INSERT INTO required_courses (department, grade, kougi_id, campus)
-                    VALUES (%s, %s, %s, %s)
-                """, (row["department"], row["grade"], row["kougi_id"], row.get("campus", None)))
+                cursor.execute(
+                    """
+                    INSERT INTO required_courses (department, grade, kougi_id, campus, semester)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                     row["department"],
+                     row["grade"],
+                     row["kougi_id"],
+                     row.get("campus", None),
+                     row.get("semester", None),
+                    ),
+                )
 
         connection.commit()
         connection.close()
@@ -86,6 +95,7 @@ app.add_exception_handler(IntegrityError, integrity_error_handler)
 app.add_exception_handler(OperationalError, operational_error_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
+
 # Dependency
 def get_db():
     db = SessionLocal()
@@ -94,22 +104,26 @@ def get_db():
     finally:
         db.close()
 
+
 def hash_password(password: str) -> str:
     # パスワードをハッシュ化
-    hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-    return hashed_pw.decode('utf-8')
+    hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+    return hashed_pw.decode("utf-8")
+
 
 def verify_password(stored_hash: str, password: str) -> bool:
     # 入力されたパスワードとハッシュ化されたパスワードを照合
-    return bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
+    return bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8"))
+
 
 # Redisクライアントの初期化
-redis_client = redis.StrictRedis(host='redis', port=6379, db=0)
+redis_client = redis.StrictRedis(host="redis", port=6379, db=0)
 
 
 # セッションをRedisに保存する関数
 def store_session(session_id: str, user_id: int):
     redis_client.setex(session_id, 86400, str(user_id))  # セッション有効期限を1日（86400秒）に設定
+
 
 # セッションをRedisから取得する関数
 def get_session(session_id: str):
@@ -118,33 +132,37 @@ def get_session(session_id: str):
     user_id = redis_client.get(session_id)
     return int(user_id) if user_id else None
 
+
 def delete_session(session_id: str):
     redis_client.delete(session_id)
+
 
 def get_userid(request: Request):
     session_id = request.cookies.get("session_id")
     if not get_session(session_id):
-        return 0  
+        return 0
     else:
         return int(get_session(session_id))
 
-@app.post("/users/register", response_model=User)
+
+@app.post("/users/register", response_model=UserSchema)
 def create_user_endpoint(user: UserCreate, db: Session = Depends(get_db)):
     db_user = get_user_by_name(db, name=user.name)
     if db_user:
         raise HTTPException(status_code=400, detail="Name already registered")
-    
+
     hashed_password = hash_password(user.password)
     user.password = hashed_password
-    
+
     return create_user(db=db, user=user)
 
-@app.post("/users/login", response_model=User)
+
+@app.post("/users/login", response_model=UserSchema)
 def read_user(
     response: Response,
     name: str,
     password: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     user = get_user_by_name(db, name=name)
     if not user or not verify_password(user.password, password):
@@ -152,10 +170,10 @@ def read_user(
 
     # セッションIDをクッキーに保存
     session_id = str(uuid.uuid4())
-    
+
     # セッションIDとユーザーIDをRedisに保存
     store_session(session_id, user.id)
-    
+
     response.set_cookie(
         key="session_id",
         value=session_id,
@@ -166,11 +184,12 @@ def read_user(
     )
     return user
 
-#ユーザー情報（ページ遷移後に毎回実行）
+
+# ユーザー情報（ページ遷移後に毎回実行）
 @app.get("/users/info")
 def get_current_user(
-    request: Request, 
-    db: Session = Depends(get_db)
+    request: Request,
+    db: Session = Depends(get_db),
 ):
     print(request.headers)
     print(request.cookies)
@@ -179,30 +198,31 @@ def get_current_user(
     if not session_id:
         print(session_id)
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     user_id = get_session(session_id)
-    
+
     # データベースからユーザー情報を取得
-    user = get_user(db,user_id)
+    user = get_user(db, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    calendar = calendar_list(user_id,db)
-    
+
+    calendar = calendar_list(user_id, db)
+
     return {
         "user_info": {
             "id": user.id,
             "name": user.name,
-            "def_calendar": user.def_calendar
+            "def_calendar": user.def_calendar,
         },
-        "calendar_info": calendar
+        "calendar_info": calendar,
     }
 
-#ログアウト
+
+# ログアウト
 @app.post("/users/logout")
 def logout_user(request: Request, response: Response):
     session_id = request.cookies.get("session_id")
-    
+
     if session_id:
         delete_session(session_id)  # セッションをRedisから削除
 
@@ -210,117 +230,141 @@ def logout_user(request: Request, response: Response):
     response.delete_cookie("session_id")
     return {"detail": "Logged out successfully"}
 
-#チャット検索
+
+# チャット検索
 @app.post("/answer/{text}")
-async def get_answer(request: Request,text: str,searchrequest: SearchRequest, calendar_id:int, db: Session = Depends(get_db)):
+async def get_answer(
+    request: Request,
+    text: str,
+    searchrequest: SearchRequest,
+    calendar_id: int,
+    db: Session = Depends(get_db),
+):
     id_list = filter_course_ids(db, searchrequest)
     question = generate_input(text)
-    answer = subset_search_batch(id_list,question)
-    
+    answer = subset_search_batch(id_list, question)
+
     user_id = get_userid(request)
     print(user_id)
-    
-    owner_id = get_calendar(calendar_id,db).user_id
+
+    owner_id = get_calendar(calendar_id, db).user_id
     print(owner_id)
-    
+
     print(owner_id == user_id)
     if not owner_id == user_id:
         calendar_id = 0
     print(calendar_id)
-    
-    insert_chat(user_id,text,question,answer,db)
-    kougi_summary = get_kougi_summary(answer,db)
+
+    insert_chat(user_id, text, question, answer, db)
+    kougi_summary = get_kougi_summary(answer, db)
     results = read_db(db, answer, calendar_id)
     print(results)
-    return {"generated_input":question,"results": results,"kougi_summary":kougi_summary}
+    return {"generated_input": question, "results": results, "kougi_summary": kougi_summary}
 
 
-#講義要約文章確認
-#おそらくフロントエンドでは使わない
+# 講義要約文章確認
+# おそらくフロントエンドでは使わない
 @app.post("/kougi/summary")
 def api_get_kougi_summary(kougi_ids: list[int], db: Session = Depends(get_db)):
-    results = get_kougi_summary(kougi_ids,db)
-    return {"results":results}
+    results = get_kougi_summary(kougi_ids, db)
+    return {"results": results}
 
 
 # シラバス検索
 @app.post("/search")
-async def search_courses(request: Request,searchrequest: SearchRequest, calendar_id:int, db: Session = Depends(get_db)):
+async def search_courses(
+    request: Request,
+    searchrequest: SearchRequest,
+    calendar_id: int,
+    db: Session = Depends(get_db),
+):
     id_list = filter_course_ids(db, searchrequest)
-    
+
     user_id = get_userid(request)
-    
-    owner_id = get_calendar(calendar_id,db).user_id
+
+    owner_id = get_calendar(calendar_id, db).user_id
     if not owner_id == user_id:
         calendar_id = 0
-    
-    results = read_db(db,id_list,calendar_id)
-    print(sys.getrefcount(results)) 
+
+    results = read_db(db, id_list, calendar_id)
+    print(sys.getrefcount(results))
     print(results)
     return {"results": results}
 
 
-#カレンダー作成・更新
+# カレンダー作成・更新
 @app.post("/calendar/c-u/{mode}")
-def calendar_action_cu(request: Request, mode: str, calendar_data: UserCalendarModel, db: Session = Depends(get_db)):
+def calendar_action_cu(
+    request: Request,
+    mode: str,
+    calendar_data: UserCalendarModel,
+    db: Session = Depends(get_db),
+):
     user_id = get_userid(request)
     try:
         if mode == "c":
             if not calendar_data.user_id == user_id:
-                return {"detail":"not login"}
-            calendar = create_calendar(calendar_data,db)
-            
+                return {"detail": "not login"}
+            calendar = create_calendar(calendar_data, db)
+
         elif mode == "u":
-            owner_id = get_calendar(calendar_data.id,db).user_id
+            owner_id = get_calendar(calendar_data.id, db).user_id
             if not owner_id == user_id:
-                return {"detail":"not login"}
-            calendar = update_calendar(calendar_data,db)
-            
+                return {"detail": "not login"}
+            calendar = update_calendar(calendar_data, db)
+
         else:
             raise HTTPException(status_code=400, detail="Invalid mode")
-        #printを消すとreturnが空になる。消さないこと。
+        # printを消すとreturnが空になる。消さないこと。
         print(calendar)
-        update_user_def_calendar(user_id,calendar.id, db)
+        update_user_def_calendar(user_id, calendar.id, db)
         print(calendar)
-        return {"calendar":calendar}
-    
+        return {"calendar": calendar}
+
     except Exception as e:
         db.rollback()  # 例外発生時にロールバック
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")        
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-#カレンダー参照・削除
+
+# カレンダー参照・削除
 @app.post("/calendar/r-d/{mode}")
-def calendar_action_rd(request: Request, mode: str, user_id:int, calendar_id: int, db: Session = Depends(get_db)):
+def calendar_action_rd(
+    request: Request,
+    mode: str,
+    user_id: int,
+    calendar_id: int,
+    db: Session = Depends(get_db),
+):
     user_id = get_userid(request)
     try:
         if mode == "r":
             calendar = get_calendar(calendar_id, db)
         elif mode == "d":
-            owner_id = get_calendar(calendar_id,db).user_id
+            owner_id = get_calendar(calendar_id, db).user_id
             if not owner_id == user_id:
-                return {"detail":"not login"}
+                return {"detail": "not login"}
             calendar = delete_calendar(calendar_id, db)
             calendar_id = None
         else:
             raise HTTPException(status_code=400, detail="Invalid mode")
-        #printを消すとreturnが空になる。消さないこと。
+        # printを消すとreturnが空になる。消さないこと。
         print(calendar)
-        update_user_def_calendar(user_id,calendar_id, db)
+        update_user_def_calendar(user_id, calendar_id, db)
         print(calendar_id)
-        return {"calendar":calendar}
-        
+        return {"calendar": calendar}
+
     except Exception as e:
         db.rollback()  # 例外発生時にロールバック
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")    
-    
-    
-#講義登録
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+# 講義登録
 @app.post("/kougi/insert")
 def api_check_user_kougi(
     request: Request,
     kougi_ids: list[int],
     calendar_id: int,
-    db: Session = Depends(get_db)  
+    db: Session = Depends(get_db),
 ):
     print("Request Headers:", request.headers)
     print("Request Cookies:", request.cookies)
@@ -328,90 +372,191 @@ def api_check_user_kougi(
     failures = []
     errors = []
     user_id = get_userid(request)
-    
-    owner_id = get_calendar(calendar_id,db).user_id
+
+    owner_id = get_calendar(calendar_id, db).user_id
     if not owner_id == user_id:
-        return {"detail":"not login"}
-            
+        return {"detail": "not login"}
+
     for kougi_id in kougi_ids:
         try:
             id_list = get_matching_kougi_ids(db, kougi_id, calendar_id)
-            
+
             if id_list == []:
-                insert_user_kougi(db, kougi_id, calendar_id) 
+                insert_user_kougi(db, kougi_id, calendar_id)
                 success.append({"kougi_id": kougi_id})
-            
+
             elif id_list:
-                obstacles = read_db(db, id_list,calendar_id)
+                obstacles = read_db(db, id_list, calendar_id)
                 print(failures)
                 failures.append({"kougi_id": kougi_id, "obstacles": obstacles})
                 print(failures)
         except Exception as e:
             errors.append({"kougi_id": kougi_id, "error": str(e)})
-            
-    return {"success": success, "failures": failures,"errors":errors}
 
-    
-#講義削除
+    return {"success": success, "failures": failures, "errors": errors}
+
+
+# 必修科目の自動登録
+@app.post("/required/auto_register")
+def register_required_courses(
+    request: Request,
+    calendar_id: int,
+    db: Session = Depends(get_db)
+):
+    # ログインユーザー確認
+    user_id = get_userid(request)
+    owner_id = get_calendar(calendar_id, db).user_id
+    if user_id != owner_id:
+        return {"detail": "not login"}
+
+    # カレンダー取得
+    calendar = get_calendar(calendar_id, db)
+
+    # ❗ department / campus は配列ではなく「単体の値」として扱う
+    department = calendar.department
+    grade = calendar.grade
+    campus = calendar.campus
+
+    if not department or not grade or not campus:
+        return {"detail": "missing info in calendar"}
+
+    # 必修科目検索
+    required_list = (
+        db.query(models.RequiredCourse)
+        .filter(
+            models.RequiredCourse.department == department,
+            models.RequiredCourse.grade == grade,
+            models.RequiredCourse.campus == campus,
+        )
+        .all()
+    )
+
+    success = []
+    failed = []
+
+    for row in required_list:
+        kougi_id = row.kougi_id
+
+        # 時間割衝突チェック
+        conflicts = get_matching_kougi_ids(db, kougi_id, calendar_id)
+        if conflicts:
+            failed.append({
+                "kougi_id": kougi_id,
+                "conflicts": read_db(db, conflicts, calendar_id)
+            })
+            continue
+
+        # 登録
+        insert_user_kougi(db, kougi_id, calendar_id)
+        success.append(kougi_id)
+
+    return {"success": success, "failed": failed}
+
+
+
+# 講義削除
 @app.delete("/kougi/delete")
 def api_delete_user_kougi(
     request: Request,
     kougi_ids: list[int],
     calendar_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     print("Request Headers:", request.headers)
     print("Request Cookies:", request.cookies)
     user_id = get_userid(request)
-    
-    owner_id = get_calendar(calendar_id,db).user_id
+
+    owner_id = get_calendar(calendar_id, db).user_id
     if not owner_id == user_id:
-        return {"detail":"not login"}
-            
+        return {"detail": "not login"}
+
     for kougi_id in kougi_ids:
         delete_user_kougi(db, kougi_id, calendar_id)
-        
+
     return {"message": "Data deleted successfully"}
 
-#登録済み講義取得
+
+# 登録済み講義取得
 @app.post("/kougi/get/{calendar_id}")
 def set_default_calendar(calendar_id: int, db: Session = Depends(get_db)):
     registered_user_kougi = get_user_kougi(calendar_id, db)
-    
+
     id_list = [item.kougi_id for item in registered_user_kougi]
-    
-    results = read_db(db,id_list,calendar_id)
-    
-    return {"registered_user_kougi": registered_user_kougi,"results":results}
+
+    results = read_db(db, id_list, calendar_id)
+
+    return {"registered_user_kougi": registered_user_kougi, "results": results}
 
 
-#ここより下はフロントエンドで実装してもよさそう
+# ここより下はフロントエンドで実装してもよさそう
 # 学部リストと学期リスト
 DEPARTMENTS = [
-    "指定なし","青山スタンダード科目", "文学部共通", "文学部外国語科目", "英米文学科", "フランス文学科",
-    "比較芸術学科", "教育人間　外国語科目", "教育人間　教育学科", "教育人間　心理学科", "経済学部",
-    "法学部", "経営学部", "教職課程科目", "国際政治経済学部", "総合文化政策学部", "日本文学科",
-    "史学科", "理工学部共通", "物理科学", "数理サイエンス", "物理・数理", "電気電子工学科",
-    "機械創造", "経営システム", "情報テクノロジ－", "社会情報学部", "地球社会共生学部", "コミュニティ人間科学部",
-    "化学・生命"
+    "指定なし",
+    "青山スタンダード科目",
+    "文学部共通",
+    "文学部外国語科目",
+    "英米文学科",
+    "フランス文学科",
+    "比較芸術学科",
+    "教育人間　外国語科目",
+    "教育人間　教育学科",
+    "教育人間　心理学科",
+    "経済学部",
+    "法学部",
+    "経営学部",
+    "教職課程科目",
+    "国際政治経済学部",
+    "総合文化政策学部",
+    "日本文学科",
+    "史学科",
+    "理工学部共通",
+    "物理科学",
+    "数理サイエンス",
+    "物理・数理",
+    "電気電子工学科",
+    "機械創造",
+    "経営システム",
+    "情報テクノロジ－",
+    "社会情報学部",
+    "地球社会共生学部",
+    "コミュニティ人間科学部",
+    "化学・生命",
 ]
 
 SEMESTERS = [
-    "指定なし","前期", "通年", "後期", "後期前半", "後期後半", "通年隔１", "前期前半", "前期後半",
-    "通年隔２", "前期集中", "夏休集中", "集中", "春休集中", "後期集中", "前期隔２", "前期隔１",
-    "後期隔２", "後期隔１", "通年集中"
+    "指定なし",
+    "前期",
+    "通年",
+    "後期",
+    "後期前半",
+    "後期後半",
+    "通年隔１",
+    "前期前半",
+    "前期後半",
+    "通年隔２",
+    "前期集中",
+    "夏休集中",
+    "集中",
+    "春休集中",
+    "後期集中",
+    "前期隔２",
+    "前期隔１",
+    "後期隔２",
+    "後期隔１",
+    "通年集中",
 ]
-
 
 # 学部リストの取得
 @app.get("/departments")
 async def get_departments():
     return {"departments": DEPARTMENTS}
 
+
 # 学期リストの取得
 @app.get("/semesters")
 async def get_semesters():
     return {"semesters": SEMESTERS}
+
 
 def custom_openapi():
     if app.openapi_schema:
@@ -426,13 +571,15 @@ def custom_openapi():
     openapi_schema["openapi"] = "3.0.0"
     openapi_schema["servers"] = [
         {"url": "https://agu-syllabus.ddo.jp/api"},
-        {"url":"http://localhost:8000"}
+        {"url": "http://localhost:8000"},
     ]
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
+
 # デフォルトのOpenAPI生成を上書き
 app.openapi = custom_openapi
+
 
 @app.get("/", response_class=HTMLResponse)
 async def get_swagger_ui():
@@ -473,13 +620,11 @@ async def get_swagger_ui():
     return HTMLResponse(content=html_content)
 
 
-
-
-
 async def start_uvicorn():
     config = uvicorn.Config(app, host="0.0.0.0", port=8000, reload=True)
     server = uvicorn.Server(config)
     await server.serve()
+
 
 if __name__ == "__main__":
     try:
