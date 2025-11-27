@@ -29,6 +29,7 @@ from error_handlers import (
     unhandled_exception_handler,
 )
 from sqlalchemy.exc import IntegrityError, OperationalError
+from crud import duplicate_calendar
 
 import sys
 import io
@@ -505,6 +506,30 @@ def update_calendar_public(
         "detail": "公開設定を更新しました"
     }
 
+# カレンダーのインポート（コピー）機能
+@app.post("/calendar/import/{source_calendar_id}")
+def import_calendar(
+    request: Request,
+    source_calendar_id: int,
+    db: Session = Depends(get_db)
+):
+    # ログイン中のユーザーIDを取得
+    user_id = get_userid(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        # コピー処理を実行
+        new_calendar = duplicate_calendar(db, user_id, source_calendar_id)
+        
+        # コピーしたカレンダーをデフォルトに設定（任意：すぐ使えるようにするならアリ）
+        update_user_def_calendar(user_id, new_calendar.id, db)
+        
+        return {"message": "Calendar imported successfully", "new_calendar_id": new_calendar.id}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 # 必修科目の一括登録API (新規追加)
 @app.post("/kougi/register_required")

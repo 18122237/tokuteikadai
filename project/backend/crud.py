@@ -306,3 +306,44 @@ def get_kougi_summary(id_list,db):
     results = query.all()
     results_dict = [row._asdict() for row in results]
     return results_dict
+
+def duplicate_calendar(db: Session, user_id: int, source_calendar_id: int):
+    """
+    指定されたカレンダーを、指定されたユーザーの所有としてコピーを作成する
+    """
+    # 1. 元のカレンダー情報を取得
+    source_cal = db.query(user_calendar).filter(user_calendar.id == source_calendar_id).first()
+    if not source_cal:
+        raise HTTPException(status_code=404, detail="Source calendar not found")
+
+    # 2. 新しいカレンダーを作成（名前には「のコピー」をつけるなど工夫）
+    new_cal = user_calendar(
+        user_id=user_id,
+        calendar_name=f"{source_cal.calendar_name}のコピー",
+        campus=source_cal.campus,
+        department=source_cal.department,
+        semester=source_cal.semester,
+        sat_flag=source_cal.sat_flag,
+        sixth_period_flag=source_cal.sixth_period_flag,
+        is_public=False # コピーしたものはデフォルトで非公開にする
+    )
+    
+    db.add(new_cal)
+    db.commit()
+    db.refresh(new_cal) # 新しく発行されたIDを取得
+
+    # 3. 元のカレンダーに紐づく講義一覧を取得
+    source_lectures = db.query(user_kougi).filter(user_kougi.calendar_id == source_calendar_id).all()
+
+    # 4. 新しいカレンダーIDで講義を登録し直す
+    for lecture in source_lectures:
+        new_lecture = user_kougi(
+            calendar_id=new_cal.id,
+            kougi_id=lecture.kougi_id,
+            period=lecture.period
+        )
+        db.add(new_lecture)
+    
+    db.commit()
+    
+    return new_cal

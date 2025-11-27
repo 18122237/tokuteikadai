@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import axios from 'axios';
+import { useSetup } from '../hooks/useSetup'; 
 import {
   Box,
   Button,
@@ -46,14 +48,16 @@ const toHalfWidth = (str) => {
 export default function PublicScheduleDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { refetch } = useSetup(); // ホーム画面の更新用
 
   const [calendar, setCalendar] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
   // データ取得
   useEffect(() => {
-    const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8000";
     fetch(`${apiUrl}/calendar/public/${id}`)
       .then((res) => {
         if (!res.ok) throw new Error("データ取得に失敗しました");
@@ -64,9 +68,36 @@ export default function PublicScheduleDetail() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, apiUrl]);
 
-  // 講義データのマッピング（Home.jsのロジックを適応）
+  // インポート機能
+  const handleImport = async () => {
+    const confirmImport = window.confirm("この時間割をご自身のカレンダーとしてコピーしますか？");
+    if (!confirmImport) return;
+
+    setLoading(true);
+    try {
+      await axios.post(
+        `${apiUrl}/calendar/import/${id}`,
+        null,
+        { withCredentials: true }
+      );
+
+      alert("インポートが完了しました！ホーム画面に移動します。");
+      
+      // ホーム画面のデータを最新にする
+      if(refetch) await refetch();
+      
+      navigate("/");
+
+    } catch (err) {
+      console.error("Import failed:", err);
+      alert("インポートに失敗しました。ログイン状態を確認してください。");
+      setLoading(false);
+    }
+  };
+
+  // 講義データのマッピング
   const { lectureMap, unmatchedLectures } = useMemo(() => {
     if (!calendar || !calendar.lectures) return { lectureMap: {}, unmatchedLectures: [] };
 
@@ -78,12 +109,11 @@ export default function PublicScheduleDetail() {
       const fixedPeriod = toHalfWidth(lec.period);
       
       // 正規表現で "曜日+時限" の形式かチェック
-      // Home.jsのロジックに合わせてキーを作成
       const m = fixedPeriod.match(/^([月火水木金土])(\d+)$/u);
       
       if (m) {
         // グリッドに表示できる講義
-        const key = fixedPeriod; // そのままキーとして使用 ("月1"など)
+        const key = fixedPeriod;
         map[key] = lec;
       } else {
         // グリッド外（集中講義など）
@@ -122,7 +152,7 @@ export default function PublicScheduleDetail() {
                 border: '1px solid #ddd',
                 fontWeight: 'bold',
                 padding: 0,
-                width: '60px', // 幅を固定
+                width: '60px',
                 maxWidth: '80px',
               }}
             >
@@ -140,8 +170,6 @@ export default function PublicScheduleDetail() {
 
           if (lecture) {
             // 色分けロジック
-            // APIのレスポンス構造により、開講（学部）情報は lecture.semester に入っている場合があるため注意
-            // backend/main.py: "semester": kougi.開講 となっているので lecture.semester を見る
             const department = lecture.semester || ''; 
             const timeSlot = lecture.period || ''; // 相模原/青山判定用
 
@@ -167,7 +195,7 @@ export default function PublicScheduleDetail() {
                 border: '1px solid #ddd',
                 padding: 0,
                 height: '80px',
-                width: '120px', // 幅を設定
+                width: '120px',
               }}
             >
               <Button
@@ -183,10 +211,10 @@ export default function PublicScheduleDetail() {
                     backgroundColor: backgroundColor,
                     opacity: 0.8,
                   },
-                  textTransform: 'none', // 勝手な大文字変換を防ぐ
+                  textTransform: 'none',
                 }}
                 variant="contained"
-                disabled={!lecture || !lecture.url} // URLがない場合はクリック不可にするか、アラート出すなど
+                disabled={!lecture || !lecture.url}
                 onClick={() => {
                   if (lecture && lecture.url) {
                     window.open(lecture.url, '_blank');
@@ -246,13 +274,25 @@ export default function PublicScheduleDetail() {
         padding: 3,
       }}
     >
-      <Button
-        variant="contained"
-        onClick={() => navigate("/public-schedules")}
-        sx={{ mb: 2, backgroundColor: 'white', color: 'black', '&:hover': { backgroundColor: '#eee' } }}
-      >
-        ← 一覧に戻る
-      </Button>
+      {/* ナビゲーションボタンエリア */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+        <Button
+          variant="contained"
+          onClick={() => navigate("/public-schedules")}
+          sx={{ backgroundColor: 'white', color: 'black', '&:hover': { backgroundColor: '#eee' } }}
+        >
+          ← 一覧に戻る
+        </Button>
+
+        <Button
+          variant="contained"
+          color="secondary"
+          onClick={handleImport}
+          sx={{ fontWeight: 'bold' }}
+        >
+          📥 この時間割をコピーして使う
+        </Button>
+      </Box>
 
       <Paper sx={{ p: 3, borderRadius: 2, mb: 4, maxWidth: '1200px', mx: 'auto', backgroundColor: 'rgba(255,255,255,0.9)' }}>
         <Typography variant="h4" align="center" gutterBottom sx={{ fontWeight: 'bold', color: '#333' }}>
@@ -278,7 +318,7 @@ export default function PublicScheduleDetail() {
             width: '100%',
             margin: '0 auto',
             borderRadius: 2,
-            overflowX: 'auto', // 横スクロール対応
+            overflowX: 'auto',
             boxShadow: 3
           }}
         >
