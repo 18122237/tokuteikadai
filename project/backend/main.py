@@ -10,7 +10,8 @@ from crud import(
     get_matching_kougi_ids,insert_user_kougi,
     delete_user_kougi,calendar_list,get_user_kougi,
     create_calendar,update_calendar,delete_calendar,get_calendar,
-    update_user_def_calendar,insert_chat,get_kougi_summary
+    update_user_def_calendar,insert_chat,get_kougi_summary,
+    duplicate_calendar
 )
 from models import User, RequiredCourse
 from schemas import User, UserCreate,SearchRequest,UserCalendarModel
@@ -29,13 +30,68 @@ from error_handlers import (
     unhandled_exception_handler,
 )
 from sqlalchemy.exc import IntegrityError, OperationalError
-from crud import duplicate_calendar
-
-import sys
+import csv
+import os
+from db_config import create_db_connection
+from fastapi import APIRouter
 import io
+
+# 文字コード設定
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
+# テーブル作成
 Base.metadata.create_all(bind=engine)
+
+# ---------------------------------------------------------
+# 起動時に必修科目を自動登録する関数
+# ---------------------------------------------------------
+def initialize_required_courses_on_startup():
+    """起動時に必修科目がDBになければCSVから登録する関数"""
+    db = SessionLocal()
+    try:
+        # 既にデータがあるか確認（データがあれば何もしない）
+        if db.query(RequiredCourse).first():
+            print("✅ 必修科目データは既に存在するため、スキップします。")
+            return
+
+        print("🔄 必修科目データの初期化を開始します...")
+        
+        # CSVファイルのパス (このファイルと同じディレクトリにあると仮定)
+        CSV_PATH = os.path.join(os.path.dirname(__file__), "required_courses.csv")
+
+        if not os.path.exists(CSV_PATH):
+            print(f"⚠️ {CSV_PATH} が見つかりません。")
+            return
+
+        with open(CSV_PATH, "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            courses = []
+            for row in reader:
+                course = RequiredCourse(
+                    department=row["department"],
+                    grade=int(row["grade"]),
+                    kougi_id=int(row["kougi_id"]),
+                    campus=row.get("campus", None)
+                )
+                courses.append(course)
+            
+            # まとめて登録
+            db.add_all(courses)
+            db.commit()
+            print(f"✅ {len(courses)} 件の必修科目データを登録しました。")
+
+    except Exception as e:
+        print(f"❌ 必修科目データの初期化中にエラーが発生しました: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+# 初期化処理を実行
+initialize_required_courses_on_startup()
+
+# ---------------------------------------------------------
+# FastAPI アプリケーション設定
+# ---------------------------------------------------------
 
 app = FastAPI()
 
@@ -53,11 +109,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from fastapi import APIRouter
-import csv
-import os
-from db_config import create_db_connection
-
+# 必修科目の手動初期化エンドポイント（念のため残しています）
 @app.post("/required_courses/init")
 def init_required_courses():
     try:
