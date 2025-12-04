@@ -1,20 +1,32 @@
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
-from openai_search import subset_search_batch,generate_input
-from crud import(
-    get_user,get_user_by_name,
-    create_user,filter_course_ids, read_db,
-    get_matching_kougi_ids,insert_user_kougi,
-    delete_user_kougi,calendar_list,get_user_kougi,
-    create_calendar,update_calendar,delete_calendar,get_calendar,
-    update_user_def_calendar,insert_chat,get_kougi_summary
+from openai_search import generate_input, subset_search_batch
+from crud import (
+    create_calendar,
+    create_user,
+    delete_calendar,
+    delete_user_kougi,
+    filter_course_ids,
+    get_calendar,
+    get_kougi_summary,
+    get_matching_kougi_ids,
+    calendar_list,
+    get_user,
+    get_user_by_name,
+    get_user_kougi,
+    insert_chat,
+    insert_user_kougi,
+    read_db,
+    update_calendar,
+    update_user_def_calendar,
 )
-from models import User, RequiredCourse
-from schemas import User, UserCreate,SearchRequest,UserCalendarModel
-from database import SessionLocal, engine, Base
+import models
+from models import RequiredCourse
+from schemas import SearchRequest, User as UserSchema, UserCalendarModel, UserCreate
+from database import Base, SessionLocal, engine
 import sys
 import uvicorn
 import bcrypt
@@ -133,7 +145,7 @@ def get_userid(request: Request):
     else:
         return int(get_session(session_id))
 
-@app.post("/users/register", response_model=User)
+@app.post("/users/register", response_model=UserSchema)
 def create_user_endpoint(user: UserCreate, db: Session = Depends(get_db)):
     db_user = get_user_by_name(db, name=user.name)
     if db_user:
@@ -144,7 +156,7 @@ def create_user_endpoint(user: UserCreate, db: Session = Depends(get_db)):
     
     return create_user(db=db, user=user)
 
-@app.post("/users/login", response_model=User)
+@app.post("/users/login", response_model=UserSchema)
 def read_user(
     response: Response,
     name: str,
