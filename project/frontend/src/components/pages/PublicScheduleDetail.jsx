@@ -278,10 +278,19 @@ export default function PublicScheduleDetail() {
       <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
         <Button
           variant="contained"
-          onClick={() => navigate("/public-schedules")}
+          onClick={() => navigate("/public-schedules/search")}
           sx={{ backgroundColor: 'white', color: 'black', '&:hover': { backgroundColor: '#eee' } }}
         >
-          ← 一覧に戻る
+          ← 検索画面に戻る
+        </Button>
+
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={() => navigate("/")}
+          sx={{ fontWeight: 'bold' }}
+        >
+          🏠 ホームに戻る
         </Button>
 
         <Button

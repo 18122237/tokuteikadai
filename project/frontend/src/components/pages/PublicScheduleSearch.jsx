@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 // API URLを取得（環境変数がない場合はデフォルト値を使用）
 const getApiUrl = () => {
@@ -12,6 +13,8 @@ const getApiUrl = () => {
 const apiUrl = getApiUrl();
 
 export default function PublicScheduleSearch() {
+  const navigate = useNavigate(); // ← この行を追加
+  
   // 検索条件
   const [department, setDepartment] = useState("");
   const [campus, setCampus] = useState("");
@@ -32,14 +35,19 @@ export default function PublicScheduleSearch() {
     fetchStats();
   }, []);
 
-  // 統計情報取得
+// 統計情報取得
   const fetchStats = async () => {
     try {
       const res = await fetch(`${apiUrl}/calendar/public/stats`);
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
       const data = await res.json();
+      console.log("取得した統計情報:", data);
       setStats(data);
     } catch (err) {
       console.error("統計情報の取得に失敗:", err);
+      // エラーが発生してもUIは表示し続ける
     }
   };
 
@@ -83,14 +91,14 @@ export default function PublicScheduleSearch() {
     setSearched(false);
   };
 
-  // カレンダー詳細へ遷移
+// カレンダー詳細へ遷移
   const handleViewDetail = (calendarId) => {
-    window.location.href = `/public-schedules/${calendarId}`;
+    navigate(`/public-schedules/${calendarId}`);
   };
 
-  // カレンダーホームへ遷移（ログイン画面ではなく）
+// ホームへ遷移(ログイン画面ではない)
   const handleGoHome = () => {
-    window.location.href = '/';
+    navigate('/');
   };
 
   const styles = {
@@ -290,7 +298,7 @@ export default function PublicScheduleSearch() {
       {/* ヘッダー */}
       <h1 style={styles.header}>📚 後輩の履修例を探す</h1>
 
-      {/* 統計情報 */}
+     {/* 統計情報 */}
       {stats && (
         <div style={styles.statsPanel}>
           <div style={styles.statsTitle}>📊 公開中の時間割統計</div>
@@ -302,7 +310,17 @@ export default function PublicScheduleSearch() {
               <div>
                 <strong>学部別:</strong>{" "}
                 {Object.entries(stats.by_department)
+                  .slice(0, 5) // 最初の5件のみ表示
                   .map(([dept, count]) => `${dept}(${count})`)
+                  .join(", ")}
+                {Object.keys(stats.by_department).length > 5 && " ..."}
+              </div>
+            )}
+            {stats.by_campus && Object.keys(stats.by_campus).length > 0 && (
+              <div>
+                <strong>キャンパス別:</strong>{" "}
+                {Object.entries(stats.by_campus)
+                  .map(([campus, count]) => `${campus}(${count})`)
                   .join(", ")}
               </div>
             )}
