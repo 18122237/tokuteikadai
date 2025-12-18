@@ -1,81 +1,130 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Box, Typography, TextField, Button } from '@mui/material';
-import { Link, useSearchParams } from "react-router-dom";
-import { useLogin } from '../hooks/useLogin';
+import React, { useState, useEffect } from "react";
+import {
+  Container,
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Paper,
+  Fade,
+} from "@mui/material";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { useLogin } from "../hooks/useLogin";
 
 export const Login = () => {
-    const { login } = useLogin();
-    const [searchParams] = useSearchParams(); // クエリパラメータを取得
-    const [user, setUser] = useState({
-        username: "",
-        password: "",
+  const { login } = useLogin();
+  const navigate = useNavigate();
+  const [fadeIn, setFadeIn] = useState(true);
+  const [searchParams] = useSearchParams();
+  const [user, setUser] = useState({
+    username: "",
+    password: "",
+  });
+
+  useEffect(() => {
+    const username = searchParams.get("username");
+    const password = searchParams.get("password");
+    setUser({
+      username: username || "",
+      password: password || "",
     });
+  }, [searchParams]);
 
-    useEffect(() => {
-        // クエリパラメータからusernameとpasswordを取得して初期値に設定
-        const username = searchParams.get('username');
-        const password = searchParams.get('password');
-        setUser({
-            username: username || "",
-            password: password || "",
-        });
-    }, [searchParams]);
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setUser({ ...user, [name]: value });
+  };
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setUser({ ...user, [name]: value });
-    };
+  const onClickLogin = async () => {
+    try {
+      await login(user);
+      setFadeIn(false);
+      setTimeout(() => {
+        navigate("/");
+      }, 300);
+    } catch (err) {
+      console.error("ログイン失敗", err);
+    }
+  };
 
-    const onClickLogin = () => {
-        console.log('ログインボタンがクリックされました', user);
-        login(user);
-    };
-
-    return (
-        <Container maxWidth="xs">
-            <Box
-                sx={{
-                    marginTop: 8,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                }}
+  return (
+    <Fade in={fadeIn} timeout={300}>
+      <Box
+        sx={{
+          minHeight: "100vh",
+          background: "linear-gradient(135deg, #7fb77e, #4a8f7b)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Container maxWidth="sm">
+          <Paper
+            elevation={10}
+            sx={{
+              p: 4,
+              borderRadius: 3,
+              textAlign: "center",
+            }}
+          >
+            <Typography
+              variant="h4"
+              sx={{ fontWeight: "bold", color: "#2f5d50" }}
+              gutterBottom
             >
-                <Typography variant="h5">
-                    ログイン画面
-                </Typography>
-                <TextField
-                    margin="normal"
-                    required
-                    fullWidth
-                    name="username"
-                    label="名前"
-                    id="username"
-                    value={user.username} // フォームの値をstateから反映
-                    onChange={handleChange}
-                />
-                <TextField
-                    margin="normal"
-                    required
-                    fullWidth
-                    name="password"
-                    label="Password"
-                    type="password"
-                    id="password"
-                    value={user.password} // フォームの値をstateから反映
-                    autoComplete="current-password"
-                    onChange={handleChange}
-                />
-                <Button
-                    fullWidth
-                    variant="contained"
-                    sx={{ mt: 3, mb: 2 }}
-                    onClick={onClickLogin}
-                >
-                    ログイン
-                </Button>
-                <Link to="/register">新規登録はこちら</Link>
-            </Box>
+              履修登録・時間割管理システム
+            </Typography>
+
+            <Typography
+              variant="subtitle1"
+              sx={{ color: "text.secondary", mb: 3 }}
+            >
+              AGU Course Scheduler
+            </Typography>
+
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="username"
+              label="ユーザー名"
+              value={user.username}
+              onChange={handleChange}
+            />
+
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="password"
+              label="パスワード"
+              type="password"
+              value={user.password}
+              onChange={handleChange}
+            />
+
+            <Button
+              fullWidth
+              variant="contained"
+              size="large"
+              sx={{ mt: 3, py: 1.2, fontWeight: "bold" }}
+              onClick={onClickLogin}
+            >
+              ログイン
+            </Button>
+
+            <Typography sx={{ mt: 3 }}>
+              はじめての方は{" "}
+              <Link
+                to="/register"
+                style={{ color: "#1976d2", fontWeight: "bold" }}
+              >
+                新規登録はこちら
+              </Link>
+            </Typography>
+          </Paper>
         </Container>
-    );
+      </Box>
+    </Fade>
+  );
 };
