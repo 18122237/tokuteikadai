@@ -16,6 +16,8 @@ import { RegisterLecture } from './components/pages/RegisterLecture';
 import { ChatProvider } from './components/providers/ChatContext';
 import  PublicScheduleList  from './components/pages/PublicScheduleList';
 import PublicScheduleDetail from './components/pages/PublicScheduleDetail';
+import PublicScheduleSearch from './components/pages/PublicScheduleSearch';
+
 
 function App() {
   return (
@@ -45,6 +47,8 @@ function App() {
 
           {/* 404 Not Found */}
           <Route path="*" element={<NotFound />} />
+          
+          <Route path="/public-schedules/search" element={<PublicScheduleSearch />} />
         </Routes>
       </BrowserRouter>
     </ChatProvider>

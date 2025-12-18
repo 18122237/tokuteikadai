@@ -3,18 +3,19 @@ from fastapi.responses import HTMLResponse
 from fastapi.openapi.utils import get_openapi
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
-from openai_search import subset_search_batch,generate_input
-from crud import(
-    get_user,get_user_by_name,
-    create_user,filter_course_ids, read_db,
-    get_matching_kougi_ids,insert_user_kougi,
-    delete_user_kougi,calendar_list,get_user_kougi,
-    create_calendar,update_calendar,delete_calendar,get_calendar,
-    update_user_def_calendar,insert_chat,get_kougi_summary,
+from openai_search import subset_search_batch, generate_input
+from crud import (
+    get_user, get_user_by_name,
+    create_user, filter_course_ids, read_db,
+    get_matching_kougi_ids, insert_user_kougi,
+    delete_user_kougi, calendar_list, get_user_kougi,
+    create_calendar, update_calendar, delete_calendar, get_calendar,
+    update_user_def_calendar, insert_chat, get_kougi_summary,
     duplicate_calendar
 )
-from models import User, RequiredCourse
-from schemas import User, UserCreate,SearchRequest,UserCalendarModel
+# user_calendar を追加
+from models import User, RequiredCourse, user_calendar
+from schemas import User, UserCreate, SearchRequest, UserCalendarModel
 from database import SessionLocal, engine, Base
 import sys
 import uvicorn
@@ -35,6 +36,8 @@ import os
 from db_config import create_db_connection
 from fastapi import APIRouter
 import io
+from typing import Optional
+from pydantic import BaseModel
 
 # 文字コード設定
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -231,6 +234,7 @@ def get_current_user(
 ):
     print(request.headers)
     print(request.cookies)
+    
     # クッキーからセッションIDを取得
     session_id = request.cookies.get("session_id")
     if not session_id:
@@ -408,6 +412,7 @@ def api_check_user_kougi(
             
     return {"success": success, "failures": failures,"errors":errors}
 
+  
     
 #講義削除
 @app.delete("/kougi/delete")
@@ -519,10 +524,116 @@ def get_public_calendar_detail(calendar_id: int, db: Session = Depends(get_db)):
         "lectures": lecture_data
     }
 
+# ---------------------------------------------------------
+# 公開カレンダーの検索・統計機能 (追加分)
+# ---------------------------------------------------------
+
+# 検索リクエスト用のスキーマ
+class PublicScheduleSearchRequest(BaseModel):
+    department: Optional[str] = None  # 学部
+    campus: Optional[str] = None      # キャンパス
+    semester: Optional[str] = None    # 学期
+    keyword: Optional[str] = None     # キーワード検索（カレンダー名）
+
+# 公開カレンダーの詳細検索API
+@app.post("/calendar/public/search")
+def search_public_calendars(
+    search_request: PublicScheduleSearchRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    公開されているカレンダーを条件で検索する
+    
+    Parameters:
+    - department: 学部名（部分一致）
+    - campus: キャンパス名（完全一致）
+    - semester: 学期（完全一致）
+    - keyword: カレンダー名のキーワード（部分一致）
+    """
+    
+    # 基本クエリ: 公開されているカレンダーのみ
+    query = db.query(user_calendar).filter(user_calendar.is_public == True)
+    
+    # すべてのカレンダーを取得してPythonでフィルタリング
+    all_calendars = query.all()
+    filtered_calendars = []
+    
+    for cal in all_calendars:
+        # 学部でフィルタリング
+        if search_request.department:
+            if not cal.department or search_request.department not in str(cal.department):
+                continue
+        
+        # キャンパスでフィルタリング
+        if search_request.campus:
+            if not cal.campus or search_request.campus not in cal.campus:
+                continue
+        
+        # 学期でフィルタリング
+        if search_request.semester:
+            if not cal.semester or search_request.semester not in cal.semester:
+                continue
+        
+        # キーワード検索（カレンダー名）
+        if search_request.keyword:
+            if not cal.calendar_name or search_request.keyword not in cal.calendar_name:
+                continue
+        
+        filtered_calendars.append(cal)
+    
+    return {
+        "count": len(filtered_calendars),
+        "calendars": filtered_calendars,
+        "search_params": {
+            "department": search_request.department,
+            "campus": search_request.campus,
+            "semester": search_request.semester,
+            "keyword": search_request.keyword
+        }
+    }
+
+# 公開カレンダーの統計情報API（オプション）
+@app.get("/calendar/public/stats")
+def get_public_calendar_stats(db: Session = Depends(get_db)):
+    """
+    公開カレンダーの統計情報を取得
+    - 学部別の公開数
+    - キャンパス別の公開数
+    - 学期別の公開数
+    """
+    from sqlalchemy import func
+    
+    calendars = db.query(user_calendar).filter(user_calendar.is_public == True).all()
+    
+    # 学部別集計
+    dept_counts = {}
+    campus_counts = {}
+    semester_counts = {}
+    
+    for cal in calendars:
+        # 学部
+        if cal.department:
+            for dept in cal.department:
+                dept_counts[dept] = dept_counts.get(dept, 0) + 1
+        
+        # キャンパス
+        if cal.campus:
+            for cp in cal.campus:
+                campus_counts[cp] = campus_counts.get(cp, 0) + 1
+        
+        # 学期
+        if cal.semester:
+            for sem in cal.semester:
+                semester_counts[sem] = semester_counts.get(sem, 0) + 1
+    
+    return {
+        "total_public": len(calendars),
+        "by_department": dept_counts,
+        "by_campus": campus_counts,
+        "by_semester": semester_counts
+    }
 
 # ======== 時間割の公開設定API ========
-
-from models import user_calendar  # ← 既に import されていなければ追加してください
 
 @app.put("/calendar/{calendar_id}/public")
 def update_calendar_public(

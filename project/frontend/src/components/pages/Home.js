@@ -483,18 +483,18 @@ export const Home = () => {
           >
             保存済みのカレンダー
           </Button>
-          <Button
-            variant="contained"
-            color="secondary"
-            onClick={() => navigate('/public-schedules')}
-            sx={{
-                flex: '1 0 auto',
-                minWidth: '150px',
-                maxWidth: '200px',
-            }}
-          >
-            公開中の時間割を見る
-        </Button>
+<Button
+  variant="contained"
+  color="secondary"
+  onClick={() => navigate('/public-schedules/search')}  // ← URLを変更
+  sx={{
+    flex: '1 0 auto',
+    minWidth: '150px',
+    maxWidth: '200px',
+  }}
+>
+  後輩の履修例を探す  {/* ← テキストを変更 */}
+</Button>
 
         </Box>
 
