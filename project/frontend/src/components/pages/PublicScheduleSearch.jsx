@@ -296,7 +296,7 @@ export default function PublicScheduleSearch() {
       </style>
 
       {/* ヘッダー */}
-      <h1 style={styles.header}>📚 後輩の履修例を探す</h1>
+      <h1 style={styles.header}>📚 先輩の履修例を探す</h1>
 
      {/* 統計情報 */}
       {stats && (
