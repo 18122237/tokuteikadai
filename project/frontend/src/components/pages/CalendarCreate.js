@@ -130,7 +130,7 @@ export const CalendarCreate = () => {
                             <Grid item xs={12}>
                                 <TextField
                                     fullWidth
-                                    label="カレンダー名"
+                                    label="学年（半角）・カレンダー名"
                                     name="calendar_name"
                                     value={formData.calendar_name}
                                     onChange={handleChange}

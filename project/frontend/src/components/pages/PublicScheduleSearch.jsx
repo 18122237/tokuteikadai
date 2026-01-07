@@ -391,7 +391,7 @@ export default function PublicScheduleSearch() {
               type="text"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              placeholder="カレンダー名で検索"
+              placeholder="学年（半角数字のみ）、またはカレンダー名で検索"
             />
           </div>
         </div>
