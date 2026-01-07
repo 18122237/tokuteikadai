@@ -385,13 +385,13 @@ export default function PublicScheduleSearch() {
 
           {/* キーワード検索 */}
           <div style={styles.formControl}>
-            <label style={styles.label}>キーワード</label>
+            <label style={styles.label}>学年（半角数字のみ）、又はカレンダー名</label>
             <input
               style={styles.input}
               type="text"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              placeholder="学年（半角数字のみ）、またはカレンダー名で検索"
+              placeholder="入力"
             />
           </div>
         </div>
