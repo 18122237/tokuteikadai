@@ -40,7 +40,6 @@ class UserCalendarModel(BaseModel):
     id: Optional[int]
     user_id: int
     calendar_name: str = ""
-    grade: int 
     campus: list[str] = []
     department: list[str] = []
     semester: list[str] = []
